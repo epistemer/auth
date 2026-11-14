@@ -1,0 +1,147 @@
+// Records auth stores in bbolt, under its top-level bucket "auth".
+// See docs/adr/0005-store-layout.md for the buckets and their keys.
+//
+// Times are Unix nanoseconds. A zero time means "never" or "unset".
+// No record holds a password, a code, a token or a key as it travelled:
+// tokens are stored as SHA-256, codes as HMACs, secrets sealed.
+
+syntax = "proto3";
+
+package auth.store.v1;
+
+option go_package = "github.com/epistemer/auth/internal/storepb";
+
+// Carrier is how a session travels.
+enum Carrier {
+  CARRIER_UNSPECIFIED = 0;
+  CARRIER_COOKIE = 1;
+  CARRIER_BEARER = 2;
+}
+
+// Factor is one proof a flow accepted.
+message Factor {
+  string method = 1;
+  int64 at = 2;
+  // The address the proof travelled through, for codes and links, so two
+  // proofs through one address count as one (interface §5.7.2). It is the
+  // SHA-256 of the normalized address, never the address.
+  bytes channel = 3;
+}
+
+// Client is the client as seen when a record was made.
+message Client {
+  bytes addr = 1; // netip.Addr.MarshalBinary
+  string user_agent = 2;
+}
+
+// Session is the value of sessions/<id>.
+message Session {
+  string id = 1;
+  string user_id = 2;
+  bytes token_hash = 3;
+  Carrier carrier = 4;
+  bool verified = 5;
+  uint32 generation = 6;
+  repeated Factor factors = 7;
+  string device_id = 8;
+  bool remembered = 9;
+  int64 created = 10;
+  int64 seen = 11;
+  int64 expires = 12; // the absolute end, session.lifetime after created
+  Client client = 13;
+  bytes claims = 14; // JSON, as Claimer returned it
+  int64 ended = 15;
+}
+
+// Refresh is the value of refresh/<sha256(token)>.
+message Refresh {
+  string session_id = 1;
+  int64 issued = 2;
+  // Set when the token was replaced.
+  int64 replaced = 3;
+  // The successor, sealed under a key derived from this token, kept for
+  // refresh.grace so a client that lost the answer gets it again
+  // (interface §5.6.8).
+  bytes successor = 4;
+}
+
+// CodeState is a one-time code a flow sent.
+message CodeState {
+  string method = 1;
+  bytes mac = 2;
+  bytes channel = 3;
+  int64 sent = 4;
+  int64 expires = 5;
+  uint32 tries = 6;
+  bool burnt = 7;
+}
+
+// Flow is the value of flows/<sha256(token)>.
+message Flow {
+  int32 purpose = 1;
+  string user_id = 2;    // empty while the login is unknown
+  bytes login_key = 3;   // the throttle key of the login typed
+  string session_id = 4; // StepUp and Enroll: the session it is bound to
+  Carrier carrier = 5;
+  int64 created = 6;
+  int64 expires = 7;
+  repeated Factor proofs = 8;
+  string device_id = 9; // a registered device the request presented
+  repeated CodeState codes = 10;
+  bytes link_hash = 11;      // Recover and Accept: the link or invitation
+  string enroll_method = 12; // Enroll: the method being added
+  bytes pending = 13;        // Enroll: the sealed credential awaiting proof
+  map<string, bytes> method_state = 14;
+  bool no_user = 15; // the login didn't resolve; kept to answer alike
+}
+
+// Credential is the value of credentials/<user>\x00<method>\x00<key>.
+message Credential {
+  string method = 1;
+  bytes key = 2;
+  bytes data = 3; // the method's own record (below for built-in methods)
+  string label = 4;
+  int64 added = 5;
+  int64 used = 6;
+}
+
+// TOTPData is a TOTP credential's data.
+message TOTPData {
+  bytes sealed_secret = 1;
+  int64 last_step = 2;
+}
+
+// RecoveryData is the recovery-code credential's data: one per user.
+message RecoveryData {
+  repeated bytes hashes = 1; // SHA-256 of each code
+  repeated bool used = 2;
+}
+
+// Device is the value of devices/<id>.
+message Device {
+  string id = 1;
+  string user_id = 2;
+  bytes token_hash = 3;
+  string label = 4;
+  int64 created = 5;
+  int64 used = 6;
+  int64 expires = 7;
+}
+
+// Link is the value of links/<sha256(token)>: a recovery link or an
+// invitation.
+message Link {
+  int32 purpose = 1;
+  string user_id = 2;
+  bytes flow_hash = 3; // Recover: the flow the link belongs to
+  int64 created = 4;
+  int64 expires = 5;
+  int64 spent = 6;
+}
+
+// Counter is the value of throttle/<kind><key>.
+message Counter {
+  uint32 failures = 1;
+  int64 last = 2;  // the last attempt
+  int64 until = 3; // the end of the current wait
+}

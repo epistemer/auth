@@ -1,10 +1,10 @@
-# auth — Interface
+# auth — Interface (v1, locked)
 
-> Status: **draft for the lock**, written 2026-11-14 from [brief.md](brief.md)
-> and spikes S1–S3, and revised after [review 0001](reviews/0001-design.md).
-> The lock is epistemer's ([ownership.md](ownership.md)).
-> Until then anything here can change; after it, a change to what an app
-> writes or gets back is an amendment (§10).
+> Status: **locked on 2026-11-14** by epistemer, as revised after
+> [review 0001](reviews/0001-design.md), with every decision of §3 as it
+> stands. Written that day from [brief.md](brief.md) and spikes S1–S3. Any
+> change to what an app writes or gets back, or any looser rule of §5, needs
+> an explicit amendment, recorded in §10.
 >
 > The design and the options it rejected are in
 > [ADR 0001](adr/0001-one-flow.md). This file is the contract.
@@ -75,8 +75,8 @@ writes those over the API of §4. What `v0.1.0` leaves out is in §9.
 | D25 | Recovery | `Recover` and `Accept` set a password and make no session; the user then signs in | Claude, after review 0001 |
 | D26 | Address codes | A code sent to an address is a second proof only for a user with no enrolled second factor | Claude, after review 0001 |
 
-D4, D10 and D22–D26 are Claude's calls that most deserve a look before the
-lock. For D23, the alternative is Ed25519 with a key file, which is right if
+Claude's calls, D4, D10 and D22–D26, were accepted with the lock. For D23,
+the alternative is Ed25519 with a key file, which an amendment can add if
 another service must verify tokens.
 
 ## 4. API

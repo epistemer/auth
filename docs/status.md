@@ -3,6 +3,15 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-14: the interface is locked (M0.4)
+
+- **Landed:** you locked [interface.md](interface.md) as it stood in PR #1,
+  with Claude's calls D4, D10 and D22–D26. M0 is complete; PR #1 merges once
+  CI passes on this commit.
+- **Decided for you:** nothing.
+- **Next:** M1.1, the store and key derivation.
+- **Waiting on you:** nothing.
+
 ## 2026-11-14: the repository starts (M0.1–M0.3, M0.4 drafted)
 
 - **Landed** (PR #1, open):

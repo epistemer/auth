@@ -10,7 +10,8 @@ permissions (`auth/access`).
   the history before them.
 - Claude owns this repository until v1.0.0, on the terms of
   [docs/ownership.md](docs/ownership.md) (delegated 2026-11-14). API design
-  is epistemer's, and so is the lock of the interface.
+  is epistemer's; the interface was locked by epistemer on 2026-11-14, and a
+  looser security rule goes back to them too.
 - Load the `cfgx`, `i18n` and `errors` skills before touching config, keys
   or errors.
 - This is security code. A change to a rule of interface §5 needs a test

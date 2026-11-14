@@ -6,7 +6,7 @@
 > | Document | Answers |
 > |----------|---------|
 > | [ADR 0001](adr/0001-one-flow.md) | *What* the package does, and why that way |
-> | [interface.md](interface.md) | *What* an app writes and gets back |
+> | [interface.md](interface.md) | *What* an app writes and gets back (locked 2026-11-14) |
 > | this file | *In what order*, and *when each piece counts as done* |
 
 ## How to use this document
@@ -61,7 +61,7 @@
 | ☑ | M0.1 | Module `github.com/epistemer/auth` (Go 1.26, MIT), `doc.go`, `CLAUDE.md`, and CI like errors' | CI runs green on a PR |
 | ☑ | M0.2 | ADR 0001, this roadmap, `docs/status.md`, `docs/ownership.md`, and the brief as `docs/brief.md` | They are in the M0 PR |
 | ☑ | M0.3 | Spikes S1 (bbolt writes under a flood), S2 (argon2 cost), S3 (passkeys and OIDC as nested modules) | Each has an ADR with its measurements: [0002](adr/0002-throttle-writes.md), [0003](adr/0003-argon2-cost.md), [0004](adr/0004-methods-as-modules.md) |
-| ☐ | M0.4 | `docs/interface.md`, reviewed by the other model family ([review 0001](reviews/0001-design.md)) | epistemer locks the interface |
+| ☑ | M0.4 | `docs/interface.md`, reviewed by the other model family ([review 0001](reviews/0001-design.md)) | epistemer locks the interface (2026-11-14) |
 
 ## M1 — Sign-in
 

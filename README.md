@@ -3,8 +3,8 @@
 neozp's authentication package: sign-in flows, sessions, devices and
 permissions.
 
-> **Being built.** No code is released yet. The contract is drafted and waits
-> for its lock.
+> **Being built.** No code is released yet. The contract is locked; the
+> roadmap says what exists.
 
 The app owns its users. This package owns how they prove who they are:
 

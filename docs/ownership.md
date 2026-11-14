@@ -5,7 +5,7 @@
 | Owner | Claude, acting for epistemer (delegated on 2026-11-14) |
 | Until | `v1.0.0` is tagged |
 | Coding assistant | agy → Gemini. Claude picks the model for each task and never waits for a quota: when a model is cooling down, the strongest available one runs instead |
-| Source of truth | [ADR 0001](adr/0001-one-flow.md) (the design), [interface.md](interface.md) (the contract; the lock is epistemer's), [roadmap.md](roadmap.md) (order and done-when) |
+| Source of truth | [ADR 0001](adr/0001-one-flow.md) (the design), [interface.md](interface.md) (the contract, locked 2026-11-14), [roadmap.md](roadmap.md) (order and done-when) |
 | Record | [status.md](status.md), plus a PR for every code change |
 
 The terms are errors' (and so cfgx's, i18n's, genx's and models'), with one
@@ -41,7 +41,8 @@ addition: the security rules below.
 1. **API design decisions.** Anything that changes what an app writes or
    gets back, beyond a clarification: exported identifiers and their
    signatures, and any change to ADR 0001's decisions. Claude brings a
-   recommendation. **The lock of `interface.md` (M0.4) is yours.**
+   recommendation. The lock of `interface.md` (M0.4) was yours, given on
+   2026-11-14.
 2. **Any loosening of a security rule.** The rules of interface §5 say what
    the package refuses: how many tries a code gets, when a session counts as
    verified, what a route needs by default, what is never stored in the

@@ -798,7 +798,7 @@ func Config(edit ...func(*Values)) auth.Config // the defaults, with cheap passw
 ### 5.12 Keys
 
 1. HKDF-SHA256 derives, from the master secret, one key each for code HMACs,
-   recovery-code HMACs, token signing and encryption at rest.
+   token signing and encryption at rest (A1).
 2. With `secret_previous` set, its keys are also tried for verifying and
    decrypting. New material uses `secret` only.
 3. Only authenticator secrets outlive a rotation under the old key. `Rekey`
@@ -1007,11 +1007,11 @@ milestone that makes it possible.
 
 ## 8. Storage
 
-- One top-level bucket, `auth`, in the bbolt file the app passes. Under it:
-  `sessions`, `sessions_by_user`, `refresh`, `flows`, `credentials`,
-  `credential_keys`, `devices`, `links`, `throttle`, and `access` with
-  `groups`, `members` and `grants`.
+- One top-level bucket, `auth`, in the bbolt file the app passes, and
+  `auth_access` for `auth/access`. The buckets under them are listed in
+  [ADR 0005](adr/0005-store-layout.md) (A2).
 - Records are protobuf. The layout is private: an app reads through the API.
+  It carries a version, and a store written by a newer version is refused.
 - Reads use their own read transaction, and nothing is cached.
 - `Sweep` removes expired flows, codes, links, sessions, devices and
   counters. The app schedules it; an hourly run is enough.
@@ -1033,4 +1033,9 @@ milestone that makes it possible.
 
 ## 10. Amendments
 
-None yet.
+Clarifications Claude made under the ownership terms. Each can be overturned.
+
+| # | Date | Section | Change |
+|---|---|---|---|
+| A1 | 2026-11-14 | §5.12.1 | No key is derived for recovery codes. Review 0001 moved them to plain SHA-256 (§5.4.6), and the rule still named their HMAC key |
+| A2 | 2026-11-14 | §8 | The bucket list moved to ADR 0005, which M1.1 wrote with the code. It adds token indexes the draft didn't name, and gives `auth/access` a top-level bucket of its own. The layout was already private |

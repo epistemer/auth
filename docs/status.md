@@ -3,6 +3,40 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-14: passwords (M1.2)
+
+- **Landed** (PR #3): `internal/password`.
+  - argon2id at ADR 0003's defaults, the bound on hashes at once on every
+    hashing path, rehash on new parameters, the dummy hash, NFKC with no
+    trimming, the 1024-byte limit. A benchmark prints ADR 0003's table.
+  - Password strength by zxcvbn's estimate, on your choice:
+    [ADR 0006](adr/0006-password-strength.md) and amendment A3. zxcvbn's
+    matchers and scoring are ported, with its lists and keyboard graphs
+    from a pinned commit (MIT) and its own tests. `CheckPassword` checks the
+    length, the hints' words, whole-password patterns, then the estimate
+    against the new key `password.min_score`.
+  - [Review 0003](reviews/0003-m1.2-passwords.md) by Gemini 4 Argon
+    (High), about 115k tokens: twelve findings, nine accepted. The one
+    that mattered: estimating only the first 100 characters could pass a
+    long password made of a unit typed twice.
+- **Decided for you:**
+  - `password.min_score` defaults to 4, not the 3 I proposed: zxcvbn's
+    length term gives any password of three pieces score 3, however cheap
+    (`Summer2024!!`). The range is 3 to 4, so 3 is a config change away.
+  - The old hint check and whole-password patterns stay in front of the
+    estimate: dropping them would loosen §5.2.4.
+  - Amendment A4: `password.memory` and `password.time` get upper bounds
+    (4096 MiB, 64 passes), the bounds a stored hash is read with.
+  - The port departs from zxcvbn only where it finds more (l33t subsets,
+    every copy of a repeat, years past 2019, joined hint words).
+- **Not done:** comparing every estimate against zxcvbn's JavaScript on a
+  corpus. Running the downloaded script was blocked by the session's
+  permissions; ported tests and zxcvbn's demo results stand in.
+  §7's password tests pass at the package level; their
+  `acceptance_test.go` versions come once `SignIn` exists (M1.3).
+- **Next:** M1.3, the flow engine.
+- **Waiting on you:** nothing.
+
 ## 2026-11-14: the store (M1.1)
 
 - **Landed** (PR #2): PR #1 merged after CI passed on the lock commit. Then

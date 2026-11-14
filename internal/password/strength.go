@@ -14,15 +14,16 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"sync"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
-// maxJudged is how many characters of a password the estimator reads.
-// Matching is quadratic in the length, and a password is at least as strong
-// as its first 100 characters, so judging only them can refuse a strong
-// password but never pass a weak one.
+// maxJudged is how many characters of a password the estimator reads, as
+// zxcvbn advises: past it, the cost grows to seconds. See estimateLong.
 const maxJudged = 100
 
 //go:embed data/*.txt data/graphs.json
@@ -188,15 +189,22 @@ func newJudge(year int, hints []string) *judge {
 		}
 	}
 	// zxcvbn ranks each hint whole. A login or an address whole rarely
-	// appears in a password, so its words are ranked too.
+	// appears in a password, so its words are ranked too, and joined: "Red
+	// Hat" gives red hat, red, hat and redhat.
 	for _, h := range hints {
-		n, err := Normalize(h)
-		if err != nil {
-			continue
+		if len(h) > MaxInput {
+			h = strings.ToValidUTF8(h[:MaxInput], "")
 		}
+		n := norm.NFKC.String(h)
 		add(string(lowerRunes([]rune(n))))
-		for _, w := range words(n, 3) {
-			add(w)
+		ws := words(n, 1)
+		for _, w := range ws {
+			if utf8.RuneCountInString(w) >= 3 {
+				add(w)
+			}
+		}
+		if len(ws) > 1 {
+			add(strings.Join(ws, ""))
 		}
 	}
 	return j
@@ -274,9 +282,9 @@ func (jd *judge) cheapest(pw []rune, ms []*match) estimate {
 		k := m.j
 		pi := jd.guesses(m, n)
 		if l > 1 {
-			pi *= best[m.i-1][l-1].pi
+			pi = finite(pi * best[m.i-1][l-1].pi)
 		}
-		g := factorial(l)*pi + math.Pow(minGuessesBeforeGrowth, float64(l-1))
+		g := finite(factorial(l)*pi + math.Pow(minGuessesBeforeGrowth, float64(l-1)))
 		for cl, c := range best[k] {
 			if cl <= l && c.g <= g {
 				return
@@ -363,9 +371,6 @@ func (jd *judge) guesses(m *match, n int) float64 {
 	switch m.pattern {
 	case bruteforce:
 		g = math.Pow(bruteforceCardinality, float64(len(m.token)))
-		if math.IsInf(g, 1) {
-			g = math.MaxFloat64
-		}
 		// One more than a submatch's least, so that any other match over
 		// the same characters wins.
 		floor := float64(minSubmatchMulti + 1)
@@ -392,8 +397,14 @@ func (jd *judge) guesses(m *match, n int) float64 {
 			g *= 4
 		}
 	}
-	m.guesses = max(g, least)
+	m.guesses = finite(max(g, least))
 	return m.guesses
+}
+
+// finite keeps a product of guesses from overflowing to +Inf, where every
+// covering would look alike: past 10^308 all are as strong as can be.
+func finite(g float64) float64 {
+	return min(g, math.MaxFloat64)
 }
 
 const minYearSpace = 20

@@ -147,13 +147,72 @@ func TestBound(t *testing.T) {
 	}
 }
 
+// Every path that hashes waits for a slot, and gives up when its context
+// ends: Hash, Verify, Verify of a password too long or a malformed hash,
+// and Dummy.
 func TestWaitingRequestGivesUp(t *testing.T) {
 	h := mustNew(t, cheap, 1)
+	good, _ := h.Hash(context.Background(), "pw")
 	h.sem <- struct{}{} // the one slot is taken
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	if _, err := h.Hash(ctx, "pw"); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("got %v", err)
+	for name, f := range map[string]func(context.Context) error{
+		"Hash":   func(ctx context.Context) error { _, err := h.Hash(ctx, "pw"); return err },
+		"Verify": func(ctx context.Context) error { _, _, err := h.Verify(ctx, "pw", good); return err },
+		"Verify too long": func(ctx context.Context) error {
+			_, _, err := h.Verify(ctx, strings.Repeat("a", MaxInput+1), good)
+			return err
+		},
+		"Verify malformed": func(ctx context.Context) error { _, _, err := h.Verify(ctx, "pw", "$bad"); return err },
+		"Dummy":            func(ctx context.Context) error { return h.Dummy(ctx, "pw") },
+	} {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		if err := f(ctx); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("%s: got %v", name, err)
+		}
+		cancel()
+	}
+}
+
+// New refuses what decode would refuse, so no Hasher makes hashes it can't
+// read, and a stored hash may ask for no more than the bounds.
+func TestParamBounds(t *testing.T) {
+	for _, p := range []Params{{7, 1}, {64, 0}, {64, 65}, {4<<20 + 1, 1}} {
+		if _, err := New(p, 1); err == nil {
+			t.Errorf("%+v accepted", p)
+		}
+	}
+	h := mustNew(t, cheap, 1)
+	good, _ := h.Hash(context.Background(), "pw")
+	parts := strings.Split(good, "$")
+	for _, bad := range []string{
+		strings.Replace(good, "p=1$", "p=1,x=1$", 1),
+		strings.Replace(good, "m=64,", "m=064,", 1),
+		strings.Replace(good, "t=1,", "t=65,", 1),
+		strings.Join(append(parts[:4:4], b64.EncodeToString(make([]byte, 65)), parts[5]), "$"),
+	} {
+		if ok, _, err := h.Verify(context.Background(), "pw", bad); ok || !errors.Is(err, ErrMalformed) {
+			t.Errorf("%q: ok=%v err=%v", bad, ok, err)
+		}
+	}
+	// A malformed hash is reported also for a password that is too long.
+	if _, _, err := h.Verify(context.Background(), strings.Repeat("a", MaxInput+1), "$bad"); !errors.Is(err, ErrMalformed) {
+		t.Errorf("too long and malformed: %v", err)
+	}
+}
+
+// The trivial patterns are refused as a whole even where the estimate
+// would be enough on its own.
+func TestSimple(t *testing.T) {
+	for _, c := range []struct {
+		s    string
+		want bool
+	}{
+		{"aaaaaaaaaaaa", true}, {"abcabcabcabc", true}, {"k#9qk#9qk#9q", true}, {"abcdefghijkl", true},
+		{"987654321098", true}, {"qwertyuiop[]", true}, {"asdfasdfasdf", true}, {"1qaz2wsx3edc", true},
+		{"k#9qk#9qk#9x", false}, {"abcdefghijkx", false}, {"qwerty is fun", false},
+	} {
+		if got := simple(c.s); got != c.want {
+			t.Errorf("%q: %v", c.s, got)
+		}
 	}
 }
 
@@ -180,7 +239,7 @@ func TestDummyCostsTheSame(t *testing.T) {
 		return d[len(d)/2]
 	}
 	real := median(func() { h.Verify(ctx, "wrong", phc) })
-	dummy := median(func() { h.Dummy(ctx, "wrong") })
+	dummy := median(func() { _ = h.Dummy(ctx, "wrong") })
 	if r := float64(dummy) / float64(real); r < 0.5 || r > 2 {
 		t.Fatalf("dummy %v, real %v", dummy, real)
 	}
@@ -189,7 +248,7 @@ func TestDummyCostsTheSame(t *testing.T) {
 var rules = Rules{MinLength: 12, MinScore: 4, Year: 2026}
 
 func TestCheck(t *testing.T) {
-	hints := []string{"sara.ali@example.com", "Sara Ali", "Toy Shop"}
+	hints := []string{"sara.ali@example.com", "Sara Ali", "Toy Shop", "Jo Ann Li", "alice1999"}
 	for _, c := range []struct {
 		pw   string
 		want Reason
@@ -223,6 +282,14 @@ func TestCheck(t *testing.T) {
 		{"qwerty is part of this one", OK}, // a pattern inside a longer password
 		{"كلمة سر طويلة جدا", OK},
 		{"vR7#kq2!Lm9@", OK},
+		// Over 100 characters, a unit repeated whole: cutting at 100
+		// would chop the second copy and price it as random.
+		{strings.Repeat(strings.Repeat("a", 47)+"!9#k", 2), Simple},
+		// Hints the word check misses, which the estimate finds: words
+		// under four letters, joined, and a hint's word in l33t with its
+		// digits kept.
+		{"joannli12345", Personal},
+		{"4lice1999!xQz", Personal},
 	} {
 		if got := Check(c.pw, rules, hints...); got != c.want {
 			t.Errorf("%q: got %d, want %d", c.pw, got, c.want)

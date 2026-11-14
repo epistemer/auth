@@ -484,8 +484,8 @@ an initialism, so the getter names don't depend on the app's list.
 | `device.lifetime` | `AuthDeviceLifetime()` | 2160h | 24h and up |
 | `password.min_length` | `AuthPasswordMinLength() int` | 12 | 8 and up |
 | `password.min_score` | `AuthPasswordMinScore() int` | 4 | 3 to 4 (A3) |
-| `password.memory` | `AuthPasswordMemory() int` (MiB) | 64 | 19 and up |
-| `password.time` | `AuthPasswordTime() int` | 2 | 1 and up |
+| `password.memory` | `AuthPasswordMemory() int` (MiB) | 64 | 19 to 4096 (A4) |
+| `password.time` | `AuthPasswordTime() int` | 2 | 1 to 64 (A4) |
 | `password.concurrency` | `AuthPasswordConcurrency() int` | the number of CPUs | 1 and up |
 | `throttle.free` | `AuthThrottleFree() int` | 5 | 1 to 20 |
 | `throttle.ceiling` | `AuthThrottleCeiling()` | 15m | 1m to 24h |
@@ -1044,3 +1044,4 @@ Changes Claude made under the ownership terms, or on epistemer's choice where th
 | A1 | 2026-11-14 | §5.12.1 | No key is derived for recovery codes. Review 0001 moved them to plain SHA-256 (§5.4.6), and the rule still named their HMAC key |
 | A2 | 2026-11-14 | §8 | The bucket list moved to ADR 0005, which M1.1 wrote with the code. It adds token indexes the draft didn't name, and gives `auth/access` a top-level bucket of its own. The layout was already private |
 | A3 | 2026-11-14 | §4.6, §4.8, §5.2.4, §7 | Password strength is zxcvbn's estimate of guesses, ported with its lists ([ADR 0006](adr/0006-password-strength.md)), on epistemer's choice. It replaces the embedded list of common passwords as the third check and becomes the last; the hint check and the whole-password patterns stay. New key `password.min_score`, default 4. The three errors' descriptions widen to what the estimate finds |
+| A4 | 2026-11-14 | §4.8 | `password.memory` and `password.time` get upper bounds, 4096 MiB and 64 passes: the bounds a stored hash is read with, so a damaged record can't ask for more. Without them a config past the bound made hashes nothing could verify (review 0003) |

@@ -35,11 +35,13 @@ func (jd *judge) dictionaryMatch(pw, lookup []rune) []*match {
 	for i := range lookup {
 		for j := i; j < len(lookup) && j-i < longest; j++ {
 			w := string(lookup[i : j+1])
-			if e, ok := jd.c.words[w]; ok {
-				ms = append(ms, &match{pattern: dictionary, i: i, j: j, token: pw[i : j+1], word: w, list: e.list, rank: e.rank})
-			}
+			// A hint first: between two matches of equal cost the covering
+			// keeps the first, and a hint's word is the better reason.
 			if r, ok := jd.user[w]; ok {
 				ms = append(ms, &match{pattern: dictionary, i: i, j: j, token: pw[i : j+1], word: w, list: userList, rank: r})
+			}
+			if e, ok := jd.c.words[w]; ok {
+				ms = append(ms, &match{pattern: dictionary, i: i, j: j, token: pw[i : j+1], word: w, list: e.list, rank: e.rank})
 			}
 		}
 	}
@@ -69,10 +71,12 @@ var l33t = map[rune][]rune{
 
 // l33tMatch finds words written with substitutes, as p@ssw0rd. Each
 // substitute in pw stands for one of its letters throughout; the port tries
-// every such choice. At most three substitutes stand for two letters, so
-// there are at most eight. zxcvbn instead lets each letter take one of its
-// substitutes at a time, so it misses p4@ssword for paassword, which the
-// port finds: a difference that only ever lowers the estimate.
+// every such choice (at most three substitutes stand for two letters, so
+// there are at most eight), then each substitute alone, so that digits a
+// word keeps (4lice1999 for alice1999) don't hide it. zxcvbn lets each
+// letter take one of its substitutes at a time, and tries no subsets: it
+// misses both p4@ssword for paassword and 4lice1999. The port only ever
+// finds more.
 func (jd *judge) l33tMatch(pw, lower []rune) []*match {
 	var present []rune
 	for _, r := range lower {
@@ -98,6 +102,13 @@ func (jd *judge) l33tMatch(pw, lower []rune) []*match {
 			}
 		}
 		subs = next
+	}
+	if len(present) > 1 {
+		for _, c := range present {
+			for _, letter := range l33t[c] {
+				subs = append(subs, map[rune]rune{c: letter})
+			}
+		}
 	}
 	seen := map[string]bool{}
 	var ms []*match
@@ -187,10 +198,13 @@ func (jd *judge) spatialMatch(pw []rune) []*match {
 
 // repeatMatch finds a unit repeated, as aaaa or abcabc, and prices it as
 // the unit's own estimate times the count. It does by hand what zxcvbn does
-// with back-references, which Go's regexp lacks: at the leftmost position
-// that starts a repeat, the greedy reading takes the longest unit and the
-// lazy one the shortest, each repeated as often as it goes; the longer of
-// the two wins, reduced to its shortest unit.
+// with back-references, which Go's regexp lacks: the greedy reading takes
+// the longest unit that repeats, the lazy one the shortest, and the longer
+// of the two wins, reduced to its shortest unit. Two departures, each of
+// which only adds matches: the unit is repeated as often as it goes (zxcvbn
+// stops where the greedy unit's copies end, so it prices a fifth copy of
+// abc!9 apart), and a repeat is sought at every position (zxcvbn resumes
+// after the last one, so it misses a repeat that starts inside it).
 func (jd *judge) repeatMatch(pw []rune) []*match {
 	n := len(pw)
 	repeats := func(p, unit int) int {
@@ -200,35 +214,39 @@ func (jd *judge) repeatMatch(pw []rune) []*match {
 		}
 		return c
 	}
+	starts := func(p, unit int) bool {
+		return p+2*unit <= n && slices.Equal(pw[p:p+unit], pw[p+unit:p+2*unit])
+	}
+	base := map[string]float64{}
 	var ms []*match
-	from := 0
-	for from < n {
-		p, greedy, lazy := -1, 0, 0
-		for q := from; q < n && p < 0; q++ {
-			for unit := (n - q) / 2; unit >= 1; unit-- {
-				if repeats(q, unit) >= 2 {
-					if greedy == 0 {
-						greedy = unit
-					}
-					lazy = unit
-				}
-			}
-			if greedy > 0 {
-				p = q
+	for p := range n {
+		greedy, lazy := 0, 0
+		for unit := (n - p) / 2; unit >= 1 && greedy == 0; unit-- {
+			if starts(p, unit) {
+				greedy = unit
 			}
 		}
-		if p < 0 {
-			break
+		if greedy == 0 {
+			continue
 		}
-		unit, count := lazy, repeats(p, lazy)
-		if gl := greedy * repeats(p, greedy); gl > unit*count {
+		for unit := 1; unit <= greedy && lazy == 0; unit++ {
+			if starts(p, unit) {
+				lazy = unit
+			}
+		}
+		unit := lazy
+		if gl := greedy * repeats(p, greedy); gl > lazy*repeats(p, lazy) {
 			unit = period(pw[p : p+gl])
-			count = gl / unit
 		}
+		count := repeats(p, unit)
 		tok := pw[p : p+unit*count]
-		base := jd.analyze(pw[p : p+unit])
-		ms = append(ms, &match{pattern: repeat, i: p, j: p + len(tok) - 1, token: tok, base: base.guesses, count: count})
-		from = p + len(tok)
+		key := string(pw[p : p+unit])
+		g, ok := base[key]
+		if !ok {
+			g = jd.analyze(pw[p : p+unit]).guesses
+			base[key] = g
+		}
+		ms = append(ms, &match{pattern: repeat, i: p, j: p + len(tok) - 1, token: tok, base: g, count: count})
 	}
 	return ms
 }

@@ -44,10 +44,10 @@ order:
    password (`ErrPasswordPersonal`), as before.
 3. A password that is, as a whole, one repeated unit, one run or one walk
    along a keyboard row (`ErrPasswordSimple`), as before.
-4. zxcvbn's estimate of its first 100 characters, whose score must reach
-   `password.min_score` (default 4). The piece that covers the most
-   characters names the error: a hint's word is `Personal`, a listed word
-   is `Common`, a pattern is `Simple`.
+4. zxcvbn's estimate of its guesses, whose score must reach
+   `password.min_score` (default 4). The kind of piece that covers the most
+   characters names the error: hints' words are `Personal`, listed words
+   `Common`, patterns `Simple`; a tie goes to the hints, then the lists.
 
 Steps 2 and 3 stay although the estimate catches most of what they catch.
 They are rules of the locked interface, and dropping them would loosen it.
@@ -81,20 +81,37 @@ has shipped the list under MIT since 2016. We take zxcvbn's terms.
 
 ### Where the port departs
 
+Each departure below either only adds matches, which can only lower an
+estimate, or is noted as otherwise.
+
 - A substitute in l33t stands for one of its letters throughout the
-  password, and every such choice is tried. zxcvbn lets each letter take one
-  of its substitutes at a time, so it misses `p4@ssword` for `paassword`.
-  The port only ever finds more.
+  password, and every such choice is tried, then each substitute alone.
+  zxcvbn lets each letter take one of its substitutes at a time and tries
+  no subsets, so it misses `p4@ssword` for `paassword`, and `4lice1999` for
+  a hint `alice1999`, whose digits it rewrites as letters.
+- A repeated unit counts every copy, and a repeat is sought at every
+  position. zxcvbn stops where its greedy unit's copies end (a fifth copy of
+  `aa!9#kL2@` is priced as random), and resumes after each repeat (in
+  `a` + `a!9#kL2@a!9#kL2@` it finds `aa` and misses the rest).
+- A hint is also ranked by its words of three letters or more, and its
+  words joined (`Red Hat` gives `redhat`). A hint's word is matched before a
+  listed word, so a tie in cost keeps the hint, a better reason.
 - Years match 1900 to 2099. zxcvbn's pattern stopped at 2019, so a 2024
   counted as four random digits.
 - Capitals are judged by Unicode, where zxcvbn knows only A to Z.
 - The reference year is passed in, where zxcvbn reads the clock: auth
   passes its own clock's year (`WithClock`), so tests are stable.
-- Only the first 100 characters are judged. A password is at least as
-  strong as its first 100 characters, so this can refuse a strong password
-  and never pass a weak one. It bounds the cost of a long input: 4.4 ms on
-  this machine for 100 characters, against 0.6 ms for a four-word
-  passphrase and about 150 ms for the hash that follows.
+- Only the first 100 characters are estimated, as zxcvbn's README advises:
+  the whole of a 1024-character input took up to 2.7 s on this machine.
+  This is not purely conservative. Cutting can raise an estimate when a
+  pattern crosses the 100th character, and review 0003 found a password
+  that passes so: a unit of 51 characters typed twice, whose chopped second
+  copy prices as random. A password that is a unit repeated as a whole is
+  therefore also priced as a repeat, and the lower estimate stands. A
+  pattern that crosses the cut inside a longer password is the gap left;
+  such a password has at least 100 characters. The cost: 0.6 ms for a
+  four-word passphrase and 7 ms at 100 characters, against about 150 ms for
+  the hash that follows.
 - zxcvbn's feedback sentences aren't ported. The three errors carry the
   message, through i18n.
 
@@ -102,7 +119,10 @@ zxcvbn's own matcher and scoring tests are ported to `strength_test.go`, with
 its demo's results for `password`, `correcthorsebatterystaple` and
 `Tr0ub4dour&3`. Running zxcvbn's JavaScript on a corpus to compare every
 estimate was tried and not done: the session's permissions didn't allow
-running the downloaded code.
+running the downloaded code. Twelve rules were each removed in turn (the
+hint check, the hints in the estimate, the blame on hints, the
+whole-password patterns and repeat, l33t subsets, the bound in each hashing
+path, the parameter bounds), and a test failed every time.
 
 ### The default score
 

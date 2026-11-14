@@ -359,14 +359,31 @@ func TestRepeatMatch(t *testing.T) {
 		{"2818BBBbzsdf1111@*&@!aaaaaEUDA@@@@@@1729", "BBB/B,1111/1,aaaaa/a,@@@@@@/@"},
 		{"abab", "abab/ab"}, {"aabaab", "aabaab/aab"}, {"abababab", "abababab/ab"},
 	} {
-		if got := strings.Join(base(jd.repeatMatch([]rune(c.pw))), ","); got != c.want {
-			t.Errorf("%q: %s, want %s", c.pw, got, c.want)
+		// zxcvbn's matches are all found; the port also finds the repeats
+		// that start inside them.
+		got := base(jd.repeatMatch([]rune(c.pw)))
+		for _, w := range strings.Split(c.want, ",") {
+			if w != "" && !containsStr(got, w) {
+				t.Errorf("%q: %v lacks %s", c.pw, got, w)
+			}
 		}
+		if c.want == "" && len(got) > 0 {
+			t.Errorf("%q: %v", c.pw, got)
+		}
+	}
+	// The unit repeats as often as it goes: five copies, where zxcvbn's
+	// greedy reading stops at four.
+	if got := base(jd.repeatMatch([]rune(strings.Repeat("aa!9#kL2@", 5)))); got[0] != strings.Repeat("aa!9#kL2@", 5)+"/aa!9#kL2@" {
+		t.Errorf("five copies: %v", got[0])
+	}
+	// A repeat inside another is found: zxcvbn resumes after "aa".
+	if got := base(jd.repeatMatch([]rune("a" + strings.Repeat("a!9#kL2@", 2)))); !containsStr(got, strings.Repeat("a!9#kL2@", 2)+"/a!9#kL2@") {
+		t.Errorf("inside: %v", got)
 	}
 	// The repeat costs its unit's estimate times the count.
 	ms := jd.repeatMatch([]rune("batterystaplebatterystaplebatterystaple"))
 	unit := jd.analyze([]rune("batterystaple"))
-	if len(ms) != 1 || ms[0].count != 3 || jd.guesses(ms[0], 39) != unit.guesses*3 {
+	if ms[0].i != 0 || ms[0].count != 3 || jd.guesses(ms[0], 39) != unit.guesses*3 {
 		t.Errorf("batterystaple: %v", base(ms))
 	}
 }

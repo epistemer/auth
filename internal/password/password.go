@@ -44,9 +44,24 @@ type Hasher struct {
 	dummy  string
 }
 
+// The bounds on parameters, for new hashes and stored ones alike: a stored
+// hash outside them is malformed, so a damaged record can't ask for more
+// than 4 GiB or 64 passes.
+const (
+	minMemoryKiB = 8
+	maxMemoryKiB = 4 << 20
+	maxTime      = 64
+	minSalt      = 8
+	maxSalt      = 64
+)
+
+func (p Params) valid() bool {
+	return p.MemoryKiB >= minMemoryKiB && p.MemoryKiB <= maxMemoryKiB && p.Time >= 1 && p.Time <= maxTime
+}
+
 // New returns a Hasher. concurrency is the most hashes that run at once.
 func New(p Params, concurrency int) (*Hasher, error) {
-	if p.MemoryKiB < 8 || p.Time < 1 || concurrency < 1 {
+	if !p.valid() || concurrency < 1 {
 		return nil, fmt.Errorf("password: invalid parameters %+v, concurrency %d", p, concurrency)
 	}
 	h := &Hasher{params: p, sem: make(chan struct{}, concurrency)}
@@ -95,16 +110,16 @@ func (h *Hasher) Hash(ctx context.Context, pw string) (string, error) {
 // Verify reports whether pw matches the stored hash, and whether the hash
 // was made with other parameters and should be replaced (§5.2.1). A
 // password over MaxInput bytes is checked against the dummy hash, so it
-// costs the same and never matches.
+// costs the same and never matches. A malformed stored hash is
+// ErrMalformed, also after the dummy's work.
 func (h *Hasher) Verify(ctx context.Context, pw, stored string) (ok, rehash bool, err error) {
 	n, nerr := Normalize(pw)
 	p, salt, want, perr := decode(stored)
 	if nerr != nil || perr != nil {
-		h.Dummy(ctx, pw)
-		if perr != nil && nerr == nil {
-			return false, false, perr
+		if err := h.Dummy(ctx, pw); err != nil {
+			return false, false, err
 		}
-		return false, false, nil
+		return false, false, perr
 	}
 	if err := h.acquire(ctx); err != nil {
 		return false, false, err
@@ -115,18 +130,23 @@ func (h *Hasher) Verify(ctx context.Context, pw, stored string) (ok, rehash bool
 	return ok, ok && p != h.params, nil
 }
 
-// Dummy does the work of Verify against a hash that never matches.
-func (h *Hasher) Dummy(ctx context.Context, pw string) {
+// Dummy does the work of Verify against a hash that never matches. Its
+// error is the context's, when the context ends while it waits.
+func (h *Hasher) Dummy(ctx context.Context, pw string) error {
 	if len(pw) > MaxInput {
 		pw = pw[:MaxInput]
 	}
-	p, salt, want, _ := decode(h.dummy)
-	if h.acquire(ctx) != nil {
-		return
+	p, salt, want, err := decode(h.dummy)
+	if err != nil {
+		panic("password: the dummy hash is malformed") // New made it
+	}
+	if err := h.acquire(ctx); err != nil {
+		return err
 	}
 	defer h.release()
 	got := argon2.IDKey([]byte(norm.NFKC.String(pw)), salt, p.Time, p.MemoryKiB, threads, keyLen)
 	subtle.ConstantTimeCompare(got, want)
+	return nil
 }
 
 var b64 = base64.RawStdEncoding
@@ -143,10 +163,10 @@ func decode(s string) (p Params, salt, key []byte, err error) {
 	}
 	var par uint32
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &p.MemoryKiB, &p.Time, &par); err != nil ||
-		par != threads || p.Time < 1 || p.Time > 64 || p.MemoryKiB < 8 || p.MemoryKiB > 4<<20 {
+		par != threads || !p.valid() || parts[3] != fmt.Sprintf("m=%d,t=%d,p=%d", p.MemoryKiB, p.Time, par) {
 		return p, nil, nil, ErrMalformed
 	}
-	if salt, err = b64.DecodeString(parts[4]); err != nil || len(salt) < 8 {
+	if salt, err = b64.DecodeString(parts[4]); err != nil || len(salt) < minSalt || len(salt) > maxSalt {
 		return p, nil, nil, ErrMalformed
 	}
 	if key, err = b64.DecodeString(parts[5]); err != nil || len(key) != keyLen {

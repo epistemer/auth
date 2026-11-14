@@ -55,37 +55,55 @@ func Check(pw string, r Rules, hints ...string) Reason {
 	if simple(lower) {
 		return Simple
 	}
-	if len(runes) > maxJudged {
-		runes = runes[:maxJudged]
-	}
-	e := newJudge(r.Year, hints).analyze(runes)
+	e := estimateLong(newJudge(r.Year, hints), runes)
 	if e.score() >= r.MinScore {
 		return OK
 	}
 	return blame(e)
 }
 
-// blame names the piece that made a password weak: the match covering the
-// most characters, and between equals the hints before the lists before the
-// patterns. A password left to brute force alone is Simple: only one under
-// nine characters can be, below the shortest minimum length.
+// estimateLong estimates a password of any length from its first
+// maxJudged characters. Cutting can raise an estimate, when a pattern
+// crosses the cut: the second copy of a repeated unit, chopped, prices as
+// random characters. A password that is a unit repeated as a whole is
+// therefore also priced as zxcvbn prices a repeat, and the lower estimate
+// stands. A pattern crossing the cut inside a longer password is the gap
+// left (ADR 0006): estimating every character costs seconds at 1024.
+func estimateLong(jd *judge, pw []rune) estimate {
+	if len(pw) <= maxJudged {
+		return jd.analyze(pw)
+	}
+	e := jd.analyze(pw[:maxJudged])
+	if unit := period(pw); unit < len(pw) {
+		g := finite(jd.analyze(pw[:min(unit, maxJudged)]).guesses * float64(len(pw)/unit))
+		if g < e.guesses {
+			e = estimate{guesses: g, seq: []*match{{pattern: repeat, i: 0, j: len(pw) - 1, token: pw, count: len(pw) / unit}}}
+		}
+	}
+	return e
+}
+
+// blame names what made a password weak: the reason whose matches cover
+// the most characters, and between equals the hints before the lists before
+// the patterns. A password left to brute force alone is Simple: only one
+// under nine characters can be, below the shortest minimum length.
 func blame(e estimate) Reason {
-	best, size := Simple, 0
-	rank := map[Reason]int{Personal: 3, Common: 2, Simple: 1}
+	covered := map[Reason]int{}
 	for _, m := range e.seq {
-		var r Reason
 		switch {
 		case m.pattern == bruteforce:
-			continue
 		case m.pattern == dictionary && m.list == userList:
-			r = Personal
+			covered[Personal] += len(m.token)
 		case m.pattern == dictionary:
-			r = Common
+			covered[Common] += len(m.token)
 		default:
-			r = Simple
+			covered[Simple] += len(m.token)
 		}
-		if l := len(m.token); l > size || l == size && rank[r] > rank[best] {
-			best, size = r, l
+	}
+	best := Simple
+	for _, r := range []Reason{Common, Personal} { // later wins a tie
+		if covered[r] > covered[best] || covered[r] == covered[best] && covered[r] > 0 {
+			best = r
 		}
 	}
 	return best

@@ -675,15 +675,18 @@ func (x *Flow) GetNoUser() bool {
 	return false
 }
 
-// Credential is the value of credentials/<user>\x00<method>\x00<key>.
+// Credential is the value of credentials/<user>\x00<method>\x00sha256(key).
 type Credential struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Method        string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
-	Key           []byte                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"` // the method's own record (below for built-in methods)
-	Label         string                 `protobuf:"bytes,4,opt,name=label,proto3" json:"label,omitempty"`
-	Added         int64                  `protobuf:"varint,5,opt,name=added,proto3" json:"added,omitempty"`
-	Used          int64                  `protobuf:"varint,6,opt,name=used,proto3" json:"used,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Method string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	// The method's identifier for the credential: a passkey's ID, an OIDC
+	// issuer and subject. It is public, not a secret; a method whose
+	// credential is a secret keeps only a hash of it in data.
+	Key           []byte `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Data          []byte `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"` // the method's own record (below for built-in methods)
+	Label         string `protobuf:"bytes,4,opt,name=label,proto3" json:"label,omitempty"`
+	Added         int64  `protobuf:"varint,5,opt,name=added,proto3" json:"added,omitempty"`
+	Used          int64  `protobuf:"varint,6,opt,name=used,proto3" json:"used,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

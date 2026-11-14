@@ -3,11 +3,34 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-14: the store (M1.1)
+
+- **Landed** (PR #2): PR #1 merged after CI passed on the lock commit. Then
+  the first code:
+  - `internal/storepb`: the protobuf records, generated as i18n's are, with
+    a CI step that fails when they are stale.
+  - `internal/secrets`: HKDF keys per purpose, MACs that verify under the
+    current and previous secret, AES-256-GCM sealing that reports a value
+    needing a reseal, tokens and IDs.
+  - `internal/store`: the buckets, a layout version that refuses a newer
+    store, and typed reads and writes.
+  - [ADR 0005](adr/0005-store-layout.md) for the layout, and two
+    clarifying amendments to the interface: A1 (no key is derived for
+    recovery codes, which review 0001 already moved to SHA-256) and A2 (the
+    bucket list lives in ADR 0005).
+  - [Review 0002](reviews/0002-m1.1-store.md) by Gemini 3.8 Flash (High),
+    about 170k tokens: ten findings, six accepted. The two that mattered:
+    a passkey ID with a zero byte would have crashed the store, and
+    `SignKey` could hand out any purpose's key.
+- **Decided for you:** amendments A1 and A2; `go-cmp` as a test-only
+  dependency.
+- **Next:** M1.2, passwords.
+- **Waiting on you:** nothing.
+
 ## 2026-11-14: the interface is locked (M0.4)
 
 - **Landed:** you locked [interface.md](interface.md) as it stood in PR #1,
-  with Claude's calls D4, D10 and D22–D26. M0 is complete; PR #1 merges once
-  CI passes on this commit.
+  with Claude's calls D4, D10 and D22–D26. M0 is complete.
 - **Decided for you:** nothing.
 - **Next:** M1.1, the store and key derivation.
 - **Waiting on you:** nothing.

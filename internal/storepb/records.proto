@@ -95,9 +95,12 @@ message Flow {
   bool no_user = 15; // the login didn't resolve; kept to answer alike
 }
 
-// Credential is the value of credentials/<user>\x00<method>\x00<key>.
+// Credential is the value of credentials/<user>\x00<method>\x00sha256(key).
 message Credential {
   string method = 1;
+  // The method's identifier for the credential: a passkey's ID, an OIDC
+  // issuer and subject. It is public, not a secret; a method whose
+  // credential is a secret keeps only a hash of it in data.
   bytes key = 2;
   bytes data = 3; // the method's own record (below for built-in methods)
   string label = 4;

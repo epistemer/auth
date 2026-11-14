@@ -24,8 +24,8 @@ generated, and how keys come from the master secret (§5.12).
 | `sessions_by_user` | user `\0` session ID | empty |
 | `refresh` | SHA-256 of the refresh token | `Refresh` |
 | `flows` | SHA-256 of the flow token | `Flow` |
-| `credentials` | user `\0` method `\0` credential key | `Credential` |
-| `credential_keys` | method `\0` credential key | user |
+| `credentials` | user `\0` method `\0` SHA-256 of the credential key | `Credential` |
+| `credential_keys` | method `\0` SHA-256 of the credential key | user |
 | `devices` | device ID | `Device` |
 | `device_tokens` | SHA-256 of the device token | device ID |
 | `devices_by_user` | user `\0` device ID | empty |
@@ -39,9 +39,16 @@ generated, and how keys come from the master secret (§5.12).
   token's SHA-256 indexes the ID. So an ID in a URL or a log reveals nothing
   that signs anyone in, and replacing a token doesn't change the ID.
 - **Keys join parts with a zero byte**, and a part containing one panics, so
-  no key can pose as another. User IDs, method names and hashes never hold
-  one; a `UserID` that did would be refused at the API (D22 already limits
-  it).
+  no key can pose as another. User IDs and method names never hold one; a
+  `UserID` that did would be refused at the API (D22 already limits it).
+- **A credential key appears as its SHA-256.** A method's keys are arbitrary
+  bytes: a passkey's ID can hold a zero byte. Hashing gives a fixed length
+  with no zero-byte problem at the cost of a second field; the record keeps
+  the key itself.
+- **`credential_keys` indexes only methods whose keys are unique across
+  users**, such as passkeys and OIDC identities, so a proof that names no
+  user can find one. Passwords, TOTP and recovery codes have one credential
+  per user and no index.
 - `auth/access` gets its own top-level bucket, `auth_access`, written in M5.
 - `Init` creates the buckets and writes the layout version. A store whose
   version is newer than the code's is refused, so an old binary never writes
@@ -71,6 +78,11 @@ permanent.
 - The refresh token's successor (§5.6.8) is sealed under a key derived from
   the replaced token itself, with its own HKDF info, so the store alone can't
   produce it.
+
+**Copies.** `Get` hands back a record that stays valid after its
+transaction: protobuf copies every field out of the input (checked in
+`google.golang.org/protobuf` `v1.36.12`, and by a test). `Scan` hands its
+callback copies of bbolt's slices, which go stale once the bucket changes.
 
 **Test dependency.** `github.com/google/go-cmp` compares records in tests. It
 is test-only, as in cfgx.

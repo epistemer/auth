@@ -6,6 +6,7 @@ package store
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -23,8 +24,8 @@ var (
 	SessionsByUser = []byte("sessions_by_user") // <user>\x00<id> -> empty
 	Refresh        = []byte("refresh")          // sha256(token) -> Refresh
 	Flows          = []byte("flows")            // sha256(token) -> Flow
-	Credentials    = []byte("credentials")      // <user>\x00<method>\x00<key> -> Credential
-	CredentialKeys = []byte("credential_keys")  // <method>\x00<key> -> <user>
+	Credentials    = []byte("credentials")      // <user>\x00<method>\x00sha256(<key>) -> Credential
+	CredentialKeys = []byte("credential_keys")  // <method>\x00sha256(<key>) -> <user>
 	Devices        = []byte("devices")          // <id> -> Device
 	DeviceTokens   = []byte("device_tokens")    // sha256(token) -> id
 	DevicesByUser  = []byte("devices_by_user")  // <user>\x00<id> -> empty
@@ -78,7 +79,8 @@ func B(tx *bolt.Tx, name []byte) *bolt.Bucket {
 	return tx.Bucket(Root).Bucket(name)
 }
 
-// Get decodes the record at key into m.
+// Get decodes the record at key into m. protobuf copies every field out of
+// the input, so m stays valid after tx ends although bbolt's value doesn't.
 func Get(tx *bolt.Tx, bucket, key []byte, m proto.Message) error {
 	v := B(tx, bucket).Get(key)
 	if v == nil {
@@ -106,6 +108,9 @@ func Delete(tx *bolt.Tx, bucket, key []byte) error {
 // method names and hashes as keys never do, and Key panics otherwise, since
 // it would let one key pose as another.
 func Key(parts ...[]byte) []byte {
+	if len(parts) == 0 {
+		return nil
+	}
 	n := len(parts) - 1
 	for _, p := range parts {
 		n += len(p)
@@ -123,6 +128,14 @@ func Key(parts ...[]byte) []byte {
 	return k
 }
 
+// CredKey is how a method's credential key appears in a store key: its
+// SHA-256. A method's keys are arbitrary bytes (a passkey's ID can hold a
+// zero byte) and of any length; the hash is neither.
+func CredKey(key []byte) []byte {
+	s := sha256.Sum256(key)
+	return s[:]
+}
+
 // Prefix is Key with a trailing separator, for scanning every record under
 // the first parts.
 func Prefix(parts ...[]byte) []byte {
@@ -130,11 +143,12 @@ func Prefix(parts ...[]byte) []byte {
 }
 
 // Scan calls f for each key under prefix in bucket, in key order. f must not
-// change the bucket; collect keys and delete after.
+// change the bucket; collect keys and delete after. f gets copies, so it may
+// keep them; bbolt's own slices go stale once the bucket changes.
 func Scan(tx *bolt.Tx, bucket, prefix []byte, f func(k, v []byte) error) error {
 	c := B(tx, bucket).Cursor()
 	for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
-		if err := f(k, v); err != nil {
+		if err := f(bytes.Clone(k), bytes.Clone(v)); err != nil {
 			return err
 		}
 	}

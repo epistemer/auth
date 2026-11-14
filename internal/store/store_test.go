@@ -71,7 +71,7 @@ func TestEveryRecordRoundTrips(t *testing.T) {
 			LinkHash: tokHash, EnrollMethod: "totp", Pending: []byte{7},
 			MethodState: map[string][]byte{"passkey": {1}, "oidc:x": {2}}, NoUser: true,
 		}, &pb.Flow{}},
-		{store.Credentials, store.Key([]byte("u1"), []byte("password"), nil), &pb.Credential{
+		{store.Credentials, store.Key([]byte("u1"), []byte("password"), store.CredKey(nil)), &pb.Credential{
 			Method: "password", Data: []byte("$argon2id$v=19$m=65536,t=2,p=1$c2FsdA$aGFzaA"), Added: 1, Used: 2,
 		}, &pb.Credential{}},
 		{store.Devices, []byte("d1"), &pb.Device{Id: "d1", UserId: "u1", TokenHash: tokHash, Label: "laptop", Created: 1, Used: 2, Expires: 3}, &pb.Device{}},
@@ -141,7 +141,7 @@ func TestPreviousSecretThroughTheStore(t *testing.T) {
 	mac := before.MAC(secrets.Codes, []byte("flow"), []byte("123456"))
 
 	db := open(t)
-	key := store.Key([]byte("u1"), []byte("totp"), []byte("k"))
+	key := store.Key([]byte("u1"), []byte("totp"), store.CredKey([]byte("k")))
 	db.Update(func(tx *bolt.Tx) error {
 		if err := store.Put(tx, store.Credentials, key, &pb.Credential{Method: "totp", Data: data}); err != nil {
 			return err
@@ -157,12 +157,16 @@ func TestPreviousSecretThroughTheStore(t *testing.T) {
 		if err := store.Get(tx, store.Credentials, key, &c); err != nil {
 			t.Fatal(err)
 		}
-		proto.Unmarshal(c.Data, &d)
+		if err := proto.Unmarshal(c.Data, &d); err != nil {
+			t.Fatal(err)
+		}
 		pt, stale, err := after.Open(d.SealedSecret, []byte("u1"))
 		if err != nil || !stale || string(pt) != "JBSWY3DPEHPK3PXP" {
 			t.Fatalf("open after rotation: %q %v %v", pt, stale, err)
 		}
-		store.Get(tx, store.Flows, []byte("f"), &f)
+		if err := store.Get(tx, store.Flows, []byte("f"), &f); err != nil || len(f.Codes) != 1 {
+			t.Fatalf("flow: %v", err)
+		}
 		if !after.Verify(secrets.Codes, f.Codes[0].Mac, []byte("flow"), []byte("123456")) {
 			t.Fatal("code MAC doesn't verify after rotation")
 		}
@@ -170,7 +174,44 @@ func TestPreviousSecretThroughTheStore(t *testing.T) {
 	})
 }
 
+// A record read in one transaction must stay intact after the transaction
+// ends and later writes reuse bbolt's pages.
+func TestRecordsOutliveTheirTransaction(t *testing.T) {
+	db := open(t)
+	want := []byte(strings.Repeat("x", 4096))
+	db.Update(func(tx *bolt.Tx) error {
+		return store.Put(tx, store.Sessions, []byte("s"), &pb.Session{Claims: want, TokenHash: want[:32]})
+	})
+	var got pb.Session
+	db.View(func(tx *bolt.Tx) error { return store.Get(tx, store.Sessions, []byte("s"), &got) })
+	for i := range 200 {
+		db.Update(func(tx *bolt.Tx) error {
+			if err := store.Delete(tx, store.Sessions, []byte("s")); err != nil {
+				return err
+			}
+			return store.Put(tx, store.Sessions, []byte(strings.Repeat("k", i%50+1)), &pb.Session{Claims: []byte(strings.Repeat("y", 4096))})
+		})
+	}
+	if string(got.Claims) != string(want) || string(got.TokenHash) != string(want[:32]) {
+		t.Fatal("a record changed after its transaction ended")
+	}
+}
+
+func TestCredKeyAllowsAnyBytes(t *testing.T) {
+	id := []byte{0x00, 0x01, 0x00, 0xff}
+	k := store.Key([]byte("u1"), []byte("passkey"), store.CredKey(id))
+	if len(k) != len("u1")+1+len("passkey")+1+32 {
+		t.Fatalf("key %x", k)
+	}
+	if string(store.CredKey(id)) == string(store.CredKey(id[:3])) {
+		t.Fatal("two credential keys share a hash")
+	}
+}
+
 func TestKey(t *testing.T) {
+	if store.Key() != nil {
+		t.Fatal("Key() isn't nil")
+	}
 	if got := string(store.Key([]byte("u1"), []byte("totp"), []byte("k"))); got != "u1\x00totp\x00k" {
 		t.Fatalf("%q", got)
 	}

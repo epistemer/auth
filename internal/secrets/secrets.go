@@ -4,6 +4,7 @@
 package secrets
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hkdf"
@@ -106,13 +107,14 @@ func (k *Keys) Verify(p Purpose, sum []byte, parts ...[]byte) bool {
 	return ok
 }
 
-// SignKey returns the current key for p, and the previous one if any, for
-// formats that sign with the key directly (the access token).
-func (k *Keys) SignKey(p Purpose) (current, previous []byte) {
+// SignKey returns copies of the current signing key, and of the previous
+// one if any, for the access token, which signs with the key directly. No
+// other purpose's key ever leaves this package.
+func (k *Keys) SignKey() (current, previous []byte) {
 	if k.previous != nil {
-		previous = (*k.previous)[p]
+		previous = bytes.Clone((*k.previous)[Sign])
 	}
-	return k.current[p], previous
+	return bytes.Clone(k.current[Sign]), previous
 }
 
 func mac(key []byte, parts [][]byte) []byte {

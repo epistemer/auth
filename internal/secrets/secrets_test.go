@@ -35,7 +35,7 @@ func TestPurposesDiffer(t *testing.T) {
 	k := mustNew(t, secretA, nil)
 	seen := map[string]Purpose{}
 	for _, p := range []Purpose{Codes, Sign, Seal} {
-		key, _ := k.SignKey(p)
+		key := k.current[p]
 		if len(key) != 32 {
 			t.Fatalf("%s: %d bytes", p, len(key))
 		}
@@ -46,6 +46,19 @@ func TestPurposesDiffer(t *testing.T) {
 		if bytes.Contains(key, secretA[:8]) {
 			t.Fatalf("%s: key contains the secret", p)
 		}
+	}
+}
+
+func TestSignKeyIsACopy(t *testing.T) {
+	k := mustNew(t, secretB, secretA)
+	cur, prev := k.SignKey()
+	if !bytes.Equal(cur, k.current[Sign]) || !bytes.Equal(prev, (*k.previous)[Sign]) {
+		t.Fatal("SignKey doesn't return the signing keys")
+	}
+	cur[0] ^= 0xff
+	prev[0] ^= 0xff
+	if bytes.Equal(cur, k.current[Sign]) || bytes.Equal(prev, (*k.previous)[Sign]) {
+		t.Fatal("changing SignKey's result changed the key")
 	}
 }
 

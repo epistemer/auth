@@ -19,29 +19,34 @@ const (
 	Simple
 )
 
-// minPart is the shortest hint part that counts: shorter parts ("a", "co")
-// would refuse too many good passwords.
+// Rules are what Check holds a new password to.
+type Rules struct {
+	MinLength int // characters after normalization
+	MinScore  int // zxcvbn's score, 0 to 4
+	Year      int // the current year: dates near it are guessed first
+}
+
+// minPart is the shortest hint word that a password may not contain:
+// shorter words ("a", "co", "ali") would refuse too many good passwords.
 const minPart = 4
 
-// Check judges a new password, in the order of §5.2.4: length, the list of
-// common passwords, personal words, trivial patterns. minLen counts
-// characters after normalization. hints are the login, the user's name and
-// addresses, the issuer and anything the caller adds; each is split into
-// words.
-func Check(pw string, minLen int, common func(string) bool, hints ...string) Reason {
+// Check judges a new password, in the order of §5.2.4 as amendment A3
+// left it: the length; the hints' words, any of which refuses it; a
+// password that is one trivial pattern as a whole; then the estimate of its
+// guesses, which must reach r.MinScore. hints are the login, the user's
+// name and addresses, the issuer and anything the caller adds.
+func Check(pw string, r Rules, hints ...string) Reason {
 	n, err := Normalize(pw)
 	if err != nil {
 		return TooLong
 	}
-	if utf8.RuneCountInString(n) < minLen {
+	runes := []rune(n)
+	if len(runes) < r.MinLength {
 		return TooShort
 	}
 	lower := strings.ToLower(n)
-	if common != nil && (common(lower) || common(strings.TrimSpace(lower))) {
-		return Common
-	}
 	for _, h := range hints {
-		for _, part := range words(h) {
+		for _, part := range words(h, minPart) {
 			if strings.Contains(lower, part) {
 				return Personal
 			}
@@ -50,19 +55,51 @@ func Check(pw string, minLen int, common func(string) bool, hints ...string) Rea
 	if simple(lower) {
 		return Simple
 	}
-	return OK
+	if len(runes) > maxJudged {
+		runes = runes[:maxJudged]
+	}
+	e := newJudge(r.Year, hints).analyze(runes)
+	if e.score() >= r.MinScore {
+		return OK
+	}
+	return blame(e)
 }
 
-// words splits a hint into lower-case words of at least minPart
-// characters: "sara.ali@example.com" gives sara, example; "Sara Ali" gives
-// sara.
-func words(hint string) []string {
+// blame names the piece that made a password weak: the match covering the
+// most characters, and between equals the hints before the lists before the
+// patterns. A password left to brute force alone is Simple: only one under
+// nine characters can be, below the shortest minimum length.
+func blame(e estimate) Reason {
+	best, size := Simple, 0
+	rank := map[Reason]int{Personal: 3, Common: 2, Simple: 1}
+	for _, m := range e.seq {
+		var r Reason
+		switch {
+		case m.pattern == bruteforce:
+			continue
+		case m.pattern == dictionary && m.list == userList:
+			r = Personal
+		case m.pattern == dictionary:
+			r = Common
+		default:
+			r = Simple
+		}
+		if l := len(m.token); l > size || l == size && rank[r] > rank[best] {
+			best, size = r, l
+		}
+	}
+	return best
+}
+
+// words splits a hint into lower-case words of at least least characters:
+// "sara.ali@example.com" gives sara, example with least 4.
+func words(hint string, least int) []string {
 	hint, _ = Normalize(hint)
 	var out []string
 	for _, f := range strings.FieldsFunc(strings.ToLower(hint), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	}) {
-		if utf8.RuneCountInString(f) >= minPart {
+		if utf8.RuneCountInString(f) >= least {
 			out = append(out, f)
 		}
 	}
@@ -76,8 +113,8 @@ var rows = []string{
 
 // simple reports a password that is, as a whole, a short unit repeated
 // ("aaaaaaaaaaaa", "abcabcabcabc"), a run of consecutive characters
-// ("abcdefghijkl", "987654321098"), or a walk along a keyboard row. Only the
-// whole password is judged: a pattern inside a longer one is the list's job.
+// ("abcdefghijkl", "987654321098"), or a walk along a keyboard row. The
+// estimate catches most of these too; this check keeps the rule exact.
 func simple(s string) bool {
 	r := []rune(s)
 	for unit := 1; unit <= 4 && unit < len(r); unit++ {

@@ -68,7 +68,7 @@
 | ✓ | ID | Item | Done when |
 |---|----|------|-----------|
 | ☑ | M1.1 | The store: buckets, protobuf records, key derivation from the master secret (interface §5.12, §8) | A record of each kind round-trips; a previous secret still verifies and decrypts ([ADR 0005](adr/0005-store-layout.md)) |
-| ☐ | M1.2 | Passwords: argon2id, the bound, `CheckPassword`, the embedded list (its source and licence recorded in an ADR) | Interface §7's password tests pass; a benchmark prints ADR 0003's table |
+| ☐ | M1.2 | Passwords: argon2id, the bound, `CheckPassword`, zxcvbn's estimate and its lists (their source and licence in [ADR 0006](adr/0006-password-strength.md)) | Interface §7's password tests pass; a benchmark prints ADR 0003's table |
 | ☐ | M1.3 | The flow engine: `SignIn`, `StepUp`, `Prove`, `Finish`, `Flow`, with the password method and the rules of §5.1 | §7's enumeration tests pass |
 | ☐ | M1.4 | Throttling (§5.8), written with `Batch` | §7's throttling tests pass under the race detector |
 | ☐ | M1.5 | Sessions and the cookie carrier: `Load`, `Require`, `Check`, `From`, `SignOut`, `Revoke`, `RevokeUser`, `Sessions`, CSRF (§5.6, §5.9) | §7's session tests pass against `httptest` |

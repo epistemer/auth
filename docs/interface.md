@@ -408,9 +408,9 @@ it is what a `Directory` returns.
 | `ErrForbidden` | Forbidden | The user lacks the permission |
 | `ErrPasswordTooShort` | Invalid | Takes the minimum as its argument |
 | `ErrPasswordTooLong` | Invalid | Over 1024 bytes |
-| `ErrPasswordCommon` | Invalid | On the list of common passwords |
-| `ErrPasswordPersonal` | Invalid | Contains the login, a name or a hint |
-| `ErrPasswordSimple` | Invalid | One repeated character, a sequence, a keyboard walk |
+| `ErrPasswordCommon` | Invalid | Made mostly of common passwords, words or names (A3) |
+| `ErrPasswordPersonal` | Invalid | Contains the login, a name or a hint, or is made mostly of them (A3) |
+| `ErrPasswordSimple` | Invalid | Repeats, sequences, keyboard walks, dates and years, whole or mostly (A3) |
 
 ```go
 func RetryAfter(err error) (time.Duration, bool)
@@ -483,6 +483,7 @@ an initialism, so the getter names don't depend on the app's list.
 | `invitation.lifetime` | `AuthInvitationLifetime()` | 72h | 1h to 720h |
 | `device.lifetime` | `AuthDeviceLifetime()` | 2160h | 24h and up |
 | `password.min_length` | `AuthPasswordMinLength() int` | 12 | 8 and up |
+| `password.min_score` | `AuthPasswordMinScore() int` | 4 | 3 to 4 (A3) |
 | `password.memory` | `AuthPasswordMemory() int` (MiB) | 64 | 19 and up |
 | `password.time` | `AuthPasswordTime() int` | 2 | 1 and up |
 | `password.concurrency` | `AuthPasswordConcurrency() int` | the number of CPUs | 1 and up |
@@ -607,9 +608,11 @@ func Config(edit ...func(*Values)) auth.Config // the defaults, with cheap passw
 3. The password is normalized to NFKC and never trimmed. Input over 1024
    bytes is `ErrPasswordTooLong`. Nothing is truncated.
 4. `CheckPassword` is the one judge of a new password, and every path that
-   sets one calls it. It checks, in order: the length; the embedded list of
-   common passwords; the login, the user's name, the parts of their
-   addresses, the issuer and the caller's hints; and the trivial patterns.
+   sets one calls it. It checks, in order: the length; the login, the
+   user's name, the parts of their addresses, the issuer and the caller's
+   hints; a password that is one trivial pattern as a whole; and zxcvbn's
+   estimate of its guesses, over the embedded lists and the hints, whose
+   score must reach `password.min_score` (A3, ADR 0006).
 5. There are no rules about character classes, and no expiry by age.
 
 ### 5.3 Codes and links
@@ -914,7 +917,8 @@ milestone that makes it possible.
   after being set. One of 1025 bytes is `ErrPasswordTooLong`.
 - A password with leading and trailing spaces needs them at sign-in.
 - A password from the common list, one containing the login, and `aaaaaaaaaaaa`
-  are each refused with their own error.
+  are each refused with their own error. So are `P@ssw0rd2024`,
+  `Summer2024!!` and `14/02/1990!!!!`, which only the estimate catches (A3).
 - A hash made with cheaper parameters is replaced at the next sign-in.
 - A password typed in a composed and a decomposed Unicode form is the same
   password.
@@ -1033,9 +1037,10 @@ milestone that makes it possible.
 
 ## 10. Amendments
 
-Clarifications Claude made under the ownership terms. Each can be overturned.
+Changes Claude made under the ownership terms, or on epistemer's choice where the row says so. Each can be overturned.
 
 | # | Date | Section | Change |
 |---|---|---|---|
 | A1 | 2026-11-14 | §5.12.1 | No key is derived for recovery codes. Review 0001 moved them to plain SHA-256 (§5.4.6), and the rule still named their HMAC key |
 | A2 | 2026-11-14 | §8 | The bucket list moved to ADR 0005, which M1.1 wrote with the code. It adds token indexes the draft didn't name, and gives `auth/access` a top-level bucket of its own. The layout was already private |
+| A3 | 2026-11-14 | §4.6, §4.8, §5.2.4, §7 | Password strength is zxcvbn's estimate of guesses, ported with its lists ([ADR 0006](adr/0006-password-strength.md)), on epistemer's choice. It replaces the embedded list of common passwords as the third check and becomes the last; the hint check and the whole-password patterns stay. New key `password.min_score`, default 4. The three errors' descriptions widen to what the estimate finds |

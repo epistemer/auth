@@ -72,7 +72,7 @@ func TestTooLong(t *testing.T) {
 	if ok, _, err := h.Verify(ctx, long, phc); ok || err != nil {
 		t.Fatalf("Verify: ok=%v err=%v", ok, err)
 	}
-	if Check(long, 12, nil) != TooLong {
+	if Check(long, rules) != TooLong {
 		t.Fatal("Check doesn't refuse it")
 	}
 }
@@ -186,8 +186,9 @@ func TestDummyCostsTheSame(t *testing.T) {
 	}
 }
 
+var rules = Rules{MinLength: 12, MinScore: 4, Year: 2026}
+
 func TestCheck(t *testing.T) {
-	common := func(s string) bool { return s == "password1234" || s == "letmein12345" }
 	hints := []string{"sara.ali@example.com", "Sara Ali", "Toy Shop"}
 	for _, c := range []struct {
 		pw   string
@@ -197,8 +198,12 @@ func TestCheck(t *testing.T) {
 		{"ççççççççççç", TooShort}, // 11 characters, 22 bytes: characters count
 		{"Password1234", Common},
 		{"letmein12345 ", Common},
+		{"P@ssw0rd2024", Common},
+		{"baseball!football", Common},
+		{"jennifer1987", Common},
 		{"my-sara-is-great", Personal},
 		{"EXAMPLE-of-a-pass", Personal},
+		{"toyshop-rocks-99", Personal}, // the issuer, written as one word
 		{"aaaaaaaaaaaa", Simple},
 		{"abcabcabcabc", Simple},
 		{"abcdefghijklm", Simple},
@@ -207,13 +212,38 @@ func TestCheck(t *testing.T) {
 		{"asdfasdfasdf", Simple},
 		{"lkjhgfdsalkjh", Simple},
 		{"1qaz2wsx3edc", Simple},
+		{"qwerty123456789", Common}, // on the list whole
+		{"Summer2024!!", Common},
+		{"14/02/1990!!!!", Simple}, // patterns inside, which the whole-password check misses
+		{"14/02/1990-12345", Simple},
+		{"purple-monkey-dishwasher", OK},
+		{"orange tiger 47", OK},
 		{"correct horse battery staple", OK},
 		{"ali-is-short-for-something", OK}, // "ali" is under four characters
 		{"qwerty is part of this one", OK}, // a pattern inside a longer password
 		{"كلمة سر طويلة جدا", OK},
+		{"vR7#kq2!Lm9@", OK},
 	} {
-		if got := Check(c.pw, 12, common, hints...); got != c.want {
+		if got := Check(c.pw, rules, hints...); got != c.want {
 			t.Errorf("%q: got %d, want %d", c.pw, got, c.want)
+		}
+	}
+}
+
+// The minimum score is a dial: a password of score 3 passes 3 and fails 4.
+// Three cheap pieces reach score 3 on zxcvbn's length term alone, which is
+// why the default is 4 (ADR 0006).
+func TestMinScore(t *testing.T) {
+	pw := "Summer2024!!"
+	e := newJudge(2026, nil).analyze([]rune(pw))
+	s := e.score()
+	if s != 3 {
+		t.Fatalf("score %d, want 3 for this test", s)
+	}
+	for _, min := range []int{s, s + 1} {
+		got := Check(pw, Rules{MinLength: 12, MinScore: min, Year: 2026})
+		if want := min <= s; (got == OK) != want {
+			t.Errorf("min %d: got %d", min, got)
 		}
 	}
 }

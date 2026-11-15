@@ -46,7 +46,7 @@
    without it. The acceptance tests of interface §7 that the item makes
    possible are written in the same PR.
 4. If the behaviour differs from interface.md, that document is amended in
-   the same PR. A looser security rule goes to epistemer first.
+   the same PR. A change to a rule of §5 also needs the other model family's review.
 5. A new dependency needs an ADR.
 6. No secret reaches a log line, an event or an error. A test greps for it.
 7. Nothing of zp's names enters the repository: tests and examples use a toy

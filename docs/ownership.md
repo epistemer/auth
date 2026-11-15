@@ -8,8 +8,11 @@
 | Source of truth | [ADR 0001](adr/0001-one-flow.md) (the design), [interface.md](interface.md) (the contract, locked 2026-11-14), [roadmap.md](roadmap.md) (order and done-when) |
 | Record | [status.md](status.md), plus a PR for every code change |
 
-The terms are errors' (and so cfgx's, i18n's, genx's and models'), with one
-addition: the security rules below.
+The terms are errors' (and so cfgx's, i18n's, genx's and models'). Until
+2026-11-15 they had one addition, that loosening a security rule came back
+to epistemer; epistemer dropped it that day: only API design is theirs. A
+change to a rule of interface §5 still needs a test that fails without it
+and a review by the other model family, and is recorded as an amendment.
 
 ## What Claude does without asking
 
@@ -43,15 +46,10 @@ addition: the security rules below.
    signatures, and any change to ADR 0001's decisions. Claude brings a
    recommendation. The lock of `interface.md` (M0.4) was yours, given on
    2026-11-14.
-2. **Any loosening of a security rule.** The rules of interface §5 say what
-   the package refuses: how many tries a code gets, when a session counts as
-   verified, what a route needs by default, what is never stored in the
-   clear. Making one stricter, or fixing code that falls short of one, is
-   Claude's. Making one looser comes back to you, however small.
-3. **A vulnerability found in a released version.** Claude fixes it and
+2. **A vulnerability found in a released version.** Claude fixes it and
    releases the fix. What to tell the apps that use the package, and when,
    is yours.
-4. **Anything Claude lacks permission for.** Work outside this repository
+3. **Anything Claude lacks permission for.** Work outside this repository
    that isn't on the roadmap. Your accounts, GitHub settings, tokens and paid
    services, speaking for you to other people, and operations the safety
    checks block, such as deleting branches or rewriting history.

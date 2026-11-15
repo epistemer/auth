@@ -3,6 +3,16 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: ownership terms
+
+- PR #5 (M1.4) merged on green.
+- epistemer dropped the extra term of [ownership.md](ownership.md):
+  loosening a security rule no longer comes back to them. Only API design
+  does, and merges on green are Claude's. A change to a rule of §5 still
+  needs a test that fails without it, the other model family's review and
+  an amendment, so it can be overturned.
+- **Next:** M1.5, sessions and the cookie carrier.
+
 ## 2026-11-15: throttling (M1.4)
 
 - **Landed** (PR #5): throttling (interface §5.8), with i18n bumped to

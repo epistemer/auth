@@ -63,6 +63,9 @@ message Refresh {
   // refresh.grace so a client that lost the answer gets it again
   // (interface §5.6.8).
   bytes successor = 4;
+  // The token this one replaced, by its hash: rotating this one wipes that
+  // one's successor, so an old token and the store can't walk the chain.
+  bytes predecessor = 5;
 }
 
 // CodeState is a one-time code a flow sent.

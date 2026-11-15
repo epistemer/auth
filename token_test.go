@@ -267,7 +267,8 @@ func TestRefreshTokensEnd(t *testing.T) {
 	if _, err := k.Finish(ctx, up.Token); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(); n != 1 {
+	// The old token stays, used, to catch reuse; a new one is issued.
+	if n := count(); n != 2 {
 		t.Errorf("%d refresh tokens after a step-up", n)
 	}
 	k.Revoke(k.ctx, "u1", res.Session.ID)

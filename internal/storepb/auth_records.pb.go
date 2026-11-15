@@ -362,7 +362,10 @@ type Refresh struct {
 	// The successor, sealed under a key derived from this token, kept for
 	// refresh.grace so a client that lost the answer gets it again
 	// (interface §5.6.8).
-	Successor     []byte `protobuf:"bytes,4,opt,name=successor,proto3" json:"successor,omitempty"`
+	Successor []byte `protobuf:"bytes,4,opt,name=successor,proto3" json:"successor,omitempty"`
+	// The token this one replaced, by its hash: rotating this one wipes that
+	// one's successor, so an old token and the store can't walk the chain.
+	Predecessor   []byte `protobuf:"bytes,5,opt,name=predecessor,proto3" json:"predecessor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -421,6 +424,13 @@ func (x *Refresh) GetReplaced() int64 {
 func (x *Refresh) GetSuccessor() []byte {
 	if x != nil {
 		return x.Successor
+	}
+	return nil
+}
+
+func (x *Refresh) GetPredecessor() []byte {
+	if x != nil {
+		return x.Predecessor
 	}
 	return nil
 }
@@ -1191,13 +1201,14 @@ const file_auth_records_proto_rawDesc = "" +
 	"\aexpires\x18\f \x01(\x03R\aexpires\x12-\n" +
 	"\x06client\x18\r \x01(\v2\x15.auth.store.v1.ClientR\x06client\x12\x16\n" +
 	"\x06claims\x18\x0e \x01(\fR\x06claims\x12\x14\n" +
-	"\x05ended\x18\x0f \x01(\x03R\x05ended\"z\n" +
+	"\x05ended\x18\x0f \x01(\x03R\x05ended\"\x9c\x01\n" +
 	"\aRefresh\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
 	"\x06issued\x18\x02 \x01(\x03R\x06issued\x12\x1a\n" +
 	"\breplaced\x18\x03 \x01(\x03R\breplaced\x12\x1c\n" +
-	"\tsuccessor\x18\x04 \x01(\fR\tsuccessor\"\xa9\x01\n" +
+	"\tsuccessor\x18\x04 \x01(\fR\tsuccessor\x12 \n" +
+	"\vpredecessor\x18\x05 \x01(\fR\vpredecessor\"\xa9\x01\n" +
 	"\tCodeState\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x10\n" +
 	"\x03mac\x18\x02 \x01(\fR\x03mac\x12\x18\n" +

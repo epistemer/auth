@@ -215,8 +215,44 @@ func (a *Auth) issueRefresh(tx *bolt.Tx, s *storepb.Session) (string, error) {
 	return token, store.B(tx, store.RefreshBySession).Put(store.Key([]byte(s.Id), []byte(hex.EncodeToString(hash))), hash)
 }
 
-// endRefresh removes every refresh token of a session, in tx: an ended or
-// stepped-up session's old ones are refused at once.
+// issueRefreshAfter is issueRefresh for a token that replaces prev.
+func (a *Auth) issueRefreshAfter(tx *bolt.Tx, s *storepb.Session, prev []byte) (string, error) {
+	token, err := a.issueRefresh(tx, s)
+	if err != nil {
+		return "", err
+	}
+	r := new(storepb.Refresh)
+	h := secrets.Hash(token)
+	if err := store.Get(tx, store.Refresh, h, r); err != nil {
+		return "", err
+	}
+	r.Predecessor = prev
+	return token, store.Put(tx, store.Refresh, h, r)
+}
+
+// retireRefresh marks every refresh token of a session used, with no
+// successor, in tx, as a step-up does: the client gets new ones, and one of
+// the old used again is reuse, which ends the session.
+func (a *Auth) retireRefresh(tx *bolt.Tx, sid string) error {
+	now := a.now().UnixNano()
+	return store.Scan(tx, store.RefreshBySession, store.Prefix([]byte(sid)), func(_, v []byte) error {
+		r := new(storepb.Refresh)
+		if err := store.Get(tx, store.Refresh, v, r); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil
+			}
+			return err
+		}
+		if r.Replaced == 0 {
+			r.Replaced = now
+		}
+		r.Successor = nil
+		return store.Put(tx, store.Refresh, v, r)
+	})
+}
+
+// endRefresh removes every refresh token of a session, in tx: an ended
+// session's are refused at once.
 func endRefresh(tx *bolt.Tx, sid string) error {
 	var keys, hashes [][]byte
 	err := store.Scan(tx, store.RefreshBySession, store.Prefix([]byte(sid)), func(k, v []byte) error {

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/text/unicode/norm"
@@ -42,7 +43,11 @@ type Hasher struct {
 	params Params
 	sem    chan struct{}
 	dummy  string
+	count  atomic.Int64 // argon2 runs, for tests of equal work
 }
+
+// Count reports how many argon2 computations this Hasher has run.
+func (h *Hasher) Count() int64 { return h.count.Load() }
 
 // The bounds on parameters, for new hashes and stored ones alike: a stored
 // hash outside them is malformed, so a damaged record can't ask for more
@@ -104,6 +109,7 @@ func (h *Hasher) Hash(ctx context.Context, pw string) (string, error) {
 		return "", err
 	}
 	defer h.release()
+	h.count.Add(1)
 	return encode(h.params, salt, argon2.IDKey([]byte(n), salt, h.params.Time, h.params.MemoryKiB, threads, keyLen)), nil
 }
 
@@ -125,6 +131,7 @@ func (h *Hasher) Verify(ctx context.Context, pw, stored string) (ok, rehash bool
 		return false, false, err
 	}
 	defer h.release()
+	h.count.Add(1)
 	got := argon2.IDKey([]byte(n), salt, p.Time, p.MemoryKiB, threads, keyLen)
 	ok = subtle.ConstantTimeCompare(got, want) == 1
 	return ok, ok && p != h.params, nil
@@ -144,6 +151,7 @@ func (h *Hasher) Dummy(ctx context.Context, pw string) error {
 		return err
 	}
 	defer h.release()
+	h.count.Add(1)
 	got := argon2.IDKey([]byte(norm.NFKC.String(pw)), salt, p.Time, p.MemoryKiB, threads, keyLen)
 	subtle.ConstantTimeCompare(got, want)
 	return nil

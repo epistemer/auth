@@ -9,7 +9,7 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        v3.21.12
-// source: records.proto
+// source: auth_records.proto
 
 package storepb
 
@@ -62,11 +62,11 @@ func (x Carrier) String() string {
 }
 
 func (Carrier) Descriptor() protoreflect.EnumDescriptor {
-	return file_records_proto_enumTypes[0].Descriptor()
+	return file_auth_records_proto_enumTypes[0].Descriptor()
 }
 
 func (Carrier) Type() protoreflect.EnumType {
-	return &file_records_proto_enumTypes[0]
+	return &file_auth_records_proto_enumTypes[0]
 }
 
 func (x Carrier) Number() protoreflect.EnumNumber {
@@ -75,7 +75,7 @@ func (x Carrier) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Carrier.Descriptor instead.
 func (Carrier) EnumDescriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{0}
+	return file_auth_records_proto_rawDescGZIP(), []int{0}
 }
 
 // Factor is one proof a flow accepted.
@@ -93,7 +93,7 @@ type Factor struct {
 
 func (x *Factor) Reset() {
 	*x = Factor{}
-	mi := &file_records_proto_msgTypes[0]
+	mi := &file_auth_records_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -105,7 +105,7 @@ func (x *Factor) String() string {
 func (*Factor) ProtoMessage() {}
 
 func (x *Factor) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[0]
+	mi := &file_auth_records_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -118,7 +118,7 @@ func (x *Factor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Factor.ProtoReflect.Descriptor instead.
 func (*Factor) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{0}
+	return file_auth_records_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Factor) GetMethod() string {
@@ -153,7 +153,7 @@ type Client struct {
 
 func (x *Client) Reset() {
 	*x = Client{}
-	mi := &file_records_proto_msgTypes[1]
+	mi := &file_auth_records_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -165,7 +165,7 @@ func (x *Client) String() string {
 func (*Client) ProtoMessage() {}
 
 func (x *Client) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[1]
+	mi := &file_auth_records_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -178,7 +178,7 @@ func (x *Client) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Client.ProtoReflect.Descriptor instead.
 func (*Client) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{1}
+	return file_auth_records_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Client) GetAddr() []byte {
@@ -219,7 +219,7 @@ type Session struct {
 
 func (x *Session) Reset() {
 	*x = Session{}
-	mi := &file_records_proto_msgTypes[2]
+	mi := &file_auth_records_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -231,7 +231,7 @@ func (x *Session) String() string {
 func (*Session) ProtoMessage() {}
 
 func (x *Session) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[2]
+	mi := &file_auth_records_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -244,7 +244,7 @@ func (x *Session) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Session.ProtoReflect.Descriptor instead.
 func (*Session) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{2}
+	return file_auth_records_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Session) GetId() string {
@@ -369,7 +369,7 @@ type Refresh struct {
 
 func (x *Refresh) Reset() {
 	*x = Refresh{}
-	mi := &file_records_proto_msgTypes[3]
+	mi := &file_auth_records_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -381,7 +381,7 @@ func (x *Refresh) String() string {
 func (*Refresh) ProtoMessage() {}
 
 func (x *Refresh) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[3]
+	mi := &file_auth_records_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -394,7 +394,7 @@ func (x *Refresh) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Refresh.ProtoReflect.Descriptor instead.
 func (*Refresh) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{3}
+	return file_auth_records_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Refresh) GetSessionId() string {
@@ -441,7 +441,7 @@ type CodeState struct {
 
 func (x *CodeState) Reset() {
 	*x = CodeState{}
-	mi := &file_records_proto_msgTypes[4]
+	mi := &file_auth_records_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -453,7 +453,7 @@ func (x *CodeState) String() string {
 func (*CodeState) ProtoMessage() {}
 
 func (x *CodeState) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[4]
+	mi := &file_auth_records_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -466,7 +466,7 @@ func (x *CodeState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CodeState.ProtoReflect.Descriptor instead.
 func (*CodeState) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{4}
+	return file_auth_records_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CodeState) GetMethod() string {
@@ -542,7 +542,7 @@ type Flow struct {
 
 func (x *Flow) Reset() {
 	*x = Flow{}
-	mi := &file_records_proto_msgTypes[5]
+	mi := &file_auth_records_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -554,7 +554,7 @@ func (x *Flow) String() string {
 func (*Flow) ProtoMessage() {}
 
 func (x *Flow) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[5]
+	mi := &file_auth_records_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -567,7 +567,7 @@ func (x *Flow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Flow.ProtoReflect.Descriptor instead.
 func (*Flow) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{5}
+	return file_auth_records_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Flow) GetPurpose() int32 {
@@ -693,7 +693,7 @@ type Credential struct {
 
 func (x *Credential) Reset() {
 	*x = Credential{}
-	mi := &file_records_proto_msgTypes[6]
+	mi := &file_auth_records_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -705,7 +705,7 @@ func (x *Credential) String() string {
 func (*Credential) ProtoMessage() {}
 
 func (x *Credential) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[6]
+	mi := &file_auth_records_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -718,7 +718,7 @@ func (x *Credential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Credential.ProtoReflect.Descriptor instead.
 func (*Credential) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{6}
+	return file_auth_records_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Credential) GetMethod() string {
@@ -774,7 +774,7 @@ type TOTPData struct {
 
 func (x *TOTPData) Reset() {
 	*x = TOTPData{}
-	mi := &file_records_proto_msgTypes[7]
+	mi := &file_auth_records_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -786,7 +786,7 @@ func (x *TOTPData) String() string {
 func (*TOTPData) ProtoMessage() {}
 
 func (x *TOTPData) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[7]
+	mi := &file_auth_records_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -799,7 +799,7 @@ func (x *TOTPData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TOTPData.ProtoReflect.Descriptor instead.
 func (*TOTPData) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{7}
+	return file_auth_records_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *TOTPData) GetSealedSecret() []byte {
@@ -827,7 +827,7 @@ type RecoveryData struct {
 
 func (x *RecoveryData) Reset() {
 	*x = RecoveryData{}
-	mi := &file_records_proto_msgTypes[8]
+	mi := &file_auth_records_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -839,7 +839,7 @@ func (x *RecoveryData) String() string {
 func (*RecoveryData) ProtoMessage() {}
 
 func (x *RecoveryData) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[8]
+	mi := &file_auth_records_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -852,7 +852,7 @@ func (x *RecoveryData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecoveryData.ProtoReflect.Descriptor instead.
 func (*RecoveryData) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{8}
+	return file_auth_records_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RecoveryData) GetHashes() [][]byte {
@@ -885,7 +885,7 @@ type Device struct {
 
 func (x *Device) Reset() {
 	*x = Device{}
-	mi := &file_records_proto_msgTypes[9]
+	mi := &file_auth_records_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -897,7 +897,7 @@ func (x *Device) String() string {
 func (*Device) ProtoMessage() {}
 
 func (x *Device) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[9]
+	mi := &file_auth_records_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -910,7 +910,7 @@ func (x *Device) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Device.ProtoReflect.Descriptor instead.
 func (*Device) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{9}
+	return file_auth_records_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Device) GetId() string {
@@ -978,7 +978,7 @@ type Link struct {
 
 func (x *Link) Reset() {
 	*x = Link{}
-	mi := &file_records_proto_msgTypes[10]
+	mi := &file_auth_records_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -990,7 +990,7 @@ func (x *Link) String() string {
 func (*Link) ProtoMessage() {}
 
 func (x *Link) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[10]
+	mi := &file_auth_records_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1003,7 +1003,7 @@ func (x *Link) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Link.ProtoReflect.Descriptor instead.
 func (*Link) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{10}
+	return file_auth_records_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Link) GetPurpose() int32 {
@@ -1060,7 +1060,7 @@ type Counter struct {
 
 func (x *Counter) Reset() {
 	*x = Counter{}
-	mi := &file_records_proto_msgTypes[11]
+	mi := &file_auth_records_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1072,7 +1072,7 @@ func (x *Counter) String() string {
 func (*Counter) ProtoMessage() {}
 
 func (x *Counter) ProtoReflect() protoreflect.Message {
-	mi := &file_records_proto_msgTypes[11]
+	mi := &file_auth_records_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1085,7 +1085,7 @@ func (x *Counter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Counter.ProtoReflect.Descriptor instead.
 func (*Counter) Descriptor() ([]byte, []int) {
-	return file_records_proto_rawDescGZIP(), []int{11}
+	return file_auth_records_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Counter) GetFailures() uint32 {
@@ -1109,11 +1109,11 @@ func (x *Counter) GetUntil() int64 {
 	return 0
 }
 
-var File_records_proto protoreflect.FileDescriptor
+var File_auth_records_proto protoreflect.FileDescriptor
 
-const file_records_proto_rawDesc = "" +
+const file_auth_records_proto_rawDesc = "" +
 	"\n" +
-	"\rrecords.proto\x12\rauth.store.v1\"J\n" +
+	"\x12auth_records.proto\x12\rauth.store.v1\"J\n" +
 	"\x06Factor\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x0e\n" +
 	"\x02at\x18\x02 \x01(\x03R\x02at\x12\x18\n" +
@@ -1219,20 +1219,20 @@ const file_records_proto_rawDesc = "" +
 	"\x0eCARRIER_BEARER\x10\x02B,Z*github.com/epistemer/auth/internal/storepbb\x06proto3"
 
 var (
-	file_records_proto_rawDescOnce sync.Once
-	file_records_proto_rawDescData []byte
+	file_auth_records_proto_rawDescOnce sync.Once
+	file_auth_records_proto_rawDescData []byte
 )
 
-func file_records_proto_rawDescGZIP() []byte {
-	file_records_proto_rawDescOnce.Do(func() {
-		file_records_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_records_proto_rawDesc), len(file_records_proto_rawDesc)))
+func file_auth_records_proto_rawDescGZIP() []byte {
+	file_auth_records_proto_rawDescOnce.Do(func() {
+		file_auth_records_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_auth_records_proto_rawDesc), len(file_auth_records_proto_rawDesc)))
 	})
-	return file_records_proto_rawDescData
+	return file_auth_records_proto_rawDescData
 }
 
-var file_records_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_records_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
-var file_records_proto_goTypes = []any{
+var file_auth_records_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_auth_records_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_auth_records_proto_goTypes = []any{
 	(Carrier)(0),         // 0: auth.store.v1.Carrier
 	(*Factor)(nil),       // 1: auth.store.v1.Factor
 	(*Client)(nil),       // 2: auth.store.v1.Client
@@ -1248,7 +1248,7 @@ var file_records_proto_goTypes = []any{
 	(*Counter)(nil),      // 12: auth.store.v1.Counter
 	nil,                  // 13: auth.store.v1.Flow.MethodStateEntry
 }
-var file_records_proto_depIdxs = []int32{
+var file_auth_records_proto_depIdxs = []int32{
 	0,  // 0: auth.store.v1.Session.carrier:type_name -> auth.store.v1.Carrier
 	1,  // 1: auth.store.v1.Session.factors:type_name -> auth.store.v1.Factor
 	2,  // 2: auth.store.v1.Session.client:type_name -> auth.store.v1.Client
@@ -1263,27 +1263,27 @@ var file_records_proto_depIdxs = []int32{
 	0,  // [0:7] is the sub-list for field type_name
 }
 
-func init() { file_records_proto_init() }
-func file_records_proto_init() {
-	if File_records_proto != nil {
+func init() { file_auth_records_proto_init() }
+func file_auth_records_proto_init() {
+	if File_auth_records_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_records_proto_rawDesc), len(file_records_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_records_proto_rawDesc), len(file_auth_records_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_records_proto_goTypes,
-		DependencyIndexes: file_records_proto_depIdxs,
-		EnumInfos:         file_records_proto_enumTypes,
-		MessageInfos:      file_records_proto_msgTypes,
+		GoTypes:           file_auth_records_proto_goTypes,
+		DependencyIndexes: file_auth_records_proto_depIdxs,
+		EnumInfos:         file_auth_records_proto_enumTypes,
+		MessageInfos:      file_auth_records_proto_msgTypes,
 	}.Build()
-	File_records_proto = out.File
-	file_records_proto_goTypes = nil
-	file_records_proto_depIdxs = nil
+	File_auth_records_proto = out.File
+	file_auth_records_proto_goTypes = nil
+	file_auth_records_proto_depIdxs = nil
 }

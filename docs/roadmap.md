@@ -68,8 +68,8 @@
 | ✓ | ID | Item | Done when |
 |---|----|------|-----------|
 | ☑ | M1.1 | The store: buckets, protobuf records, key derivation from the master secret (interface §5.12, §8) | A record of each kind round-trips; a previous secret still verifies and decrypts ([ADR 0005](adr/0005-store-layout.md)) |
-| ✓ | M1.2 | Passwords: argon2id, the bound, `CheckPassword`, zxcvbn's estimate and its lists (their source and licence in [ADR 0006](adr/0006-password-strength.md)) | Interface §7's password tests pass; a benchmark prints ADR 0003's table |
-| ☐ | M1.3 | The flow engine: `SignIn`, `StepUp`, `Prove`, `Finish`, `Flow`, with the password method and the rules of §5.1 | §7's enumeration tests pass |
+| ☑ | M1.2 | Passwords: argon2id, the bound, `CheckPassword`, zxcvbn's estimate and its lists (their source and licence in [ADR 0006](adr/0006-password-strength.md)) | Interface §7's password tests pass; a benchmark prints ADR 0003's table |
+| ☑ | M1.3 | The flow engine: `SignIn`, `StepUp`, `Prove`, `Finish`, `Flow`, with the password method and the rules of §5.1 | §7's enumeration tests for passwords pass; those for codes come with M2.1 |
 | ☐ | M1.4 | Throttling (§5.8), written with `Batch` | §7's throttling tests pass under the race detector |
 | ☐ | M1.5 | Sessions and the cookie carrier: `Load`, `Require`, `Check`, `From`, `SignOut`, `Revoke`, `RevokeUser`, `Sessions`, CSRF (§5.6, §5.9) | §7's session tests pass against `httptest` |
 | ☐ | M1.6 | Events, the errors of §4.6, `auth/authschema` as its own module, `auth/authtest` | A fake config and a generated one both satisfy `auth.Config` |
@@ -78,7 +78,7 @@
 
 | ✓ | ID | Item | Done when |
 |---|----|------|-----------|
-| ☐ | M2.1 | Codes and links (§5.3): `Challenge`, the code proofs, `Follow` | §7's code tests pass |
+| ☐ | M2.1 | Codes and links (§5.3): `Challenge`, the code proofs, `Follow` | §7's code tests pass, and its enumeration tests for `Recover` and `Challenge` |
 | ☐ | M2.2 | `Recover`, `Invite` and `Accept`, with the notice messages | A recovery with a second factor enrolled doesn't finish on the emailed proof alone |
 | ☐ | M2.3 | Devices and verified sessions (§5.7): `RememberDevice`, `Device`, `Devices`, `ForgetDevice`, policies | §7's device tests pass |
 

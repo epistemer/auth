@@ -3,6 +3,42 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: the flow engine (M1.3)
+
+- **Landed** (PR #4): the root package.
+  - The types of interface §4.1, `New` with the config's ranges checked,
+    the options, and the errors of §4.6.
+  - `SignIn`, `StepUp`, `Flow`, `Prove` and `Finish`. The password proof
+    does one hash for every login: known, unknown, without a password,
+    disabled. `Finish` makes a cookie session, ending any session the
+    request carried; a step-up upgrades its own session in place with a
+    new token and generation.
+  - `CheckPassword` and `SetPassword`; replacing a password ends the
+    user's sessions, makes older proofs in flows stale, and sends
+    `MsgPasswordChanged`.
+  - Events through a `Recorder`, or `log/slog`.
+  - [Review 0004](reviews/0004-m1.3-flows.md) by Gemini 4 Argon (High),
+    about 101k tokens: twelve findings, ten accepted. The two that
+    mattered: a flow proved with an old password could finish after a
+    change, and a rehash at sign-in could undo a change made meanwhile.
+- **Fixed on the way:** `internal/storepb/records.proto` is now
+  `auth_records.proto`. i18n registers a protobuf file of the same name,
+  so any program with both panicked at start. i18n's own file has the same
+  problem for anyone else who names theirs so.
+- **Decided for you:**
+  - Amendment A5: what `Ready` and `Offers` mean for a step-up, and its
+    errors when finished from the wrong session.
+  - What waits for its milestone: the bearer carrier (`SignIn` with
+    `Bearer()` returns `ErrUnsupported` until M3), devices (`Device` and
+    `RememberDevice` do nothing until M2.3, as §5.7.5 allows while no flow
+    can prove a second method), throttling (M1.4), `Load` (M1.5).
+  - A session cookie without `Remember` ends with the browser's session.
+- **Not done:** §7's enumeration tests for `Recover` and `Challenge` need
+  codes; the roadmap moves them to M2.1. The tests are in the package, not
+  yet `acceptance_test.go` over `authtest` (M1.6).
+- **Next:** M1.4, throttling.
+- **Waiting on you:** nothing.
+
 ## 2026-11-14: passwords (M1.2)
 
 - **Landed** (PR #3): `internal/password`.

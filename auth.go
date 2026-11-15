@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"time"
@@ -37,7 +38,8 @@ const (
 )
 
 // ErrNoUser is what a Directory returns for a login or an ID it doesn't
-// know. It is private: auth never shows it.
+// know. It is private: it has no message for people, and a sign-in never
+// answers with it, so an unknown login looks like a wrong password.
 var ErrNoUser = errors.New("auth: no such user")
 
 // Directory is the app's user table, as auth sees it.
@@ -272,6 +274,9 @@ func New(db *bolt.DB, cfg Config, dir Directory, sender Sender, opts ...Option) 
 	}
 	if err := store.Init(db); err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
+	}
+	if cfg.AuthCookieInsecure() {
+		slog.Warn("auth: cookie.insecure is set: cookies lose Secure and their __Host- prefix; for development only")
 	}
 	return a, nil
 }

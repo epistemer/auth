@@ -90,32 +90,39 @@ func (a *Auth) endSessions(tx *bolt.Tx, user UserID, keep string) ([]string, err
 		if id == keep {
 			continue
 		}
-		if err := a.endSession(tx, id); err != nil {
+		ok, err := a.endSession(tx, id)
+		if err != nil {
 			return nil, err
 		}
-		ended = append(ended, id)
+		if ok {
+			ended = append(ended, id)
+		}
 	}
 	return ended, nil
 }
 
-// endSession ends one session, in tx: its token stops resolving at once.
-// A missing or ended session is left as it is.
-func (a *Auth) endSession(tx *bolt.Tx, id string) error {
+// endSession ends one session, in tx: its token stops resolving at once,
+// and it leaves the user's index. The record stays, marked ended, until
+// Sweep. A missing or ended session is left as it is.
+func (a *Auth) endSession(tx *bolt.Tx, id string) (bool, error) {
 	var s storepb.Session
 	if err := store.Get(tx, store.Sessions, []byte(id), &s); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return nil
+			return false, nil
 		}
-		return err
+		return false, err
 	}
 	if s.Ended != 0 {
-		return nil
+		return false, nil
 	}
 	s.Ended = a.now().UnixNano()
 	if err := store.Delete(tx, store.SessionTokens, s.TokenHash); err != nil {
-		return err
+		return false, err
 	}
-	return store.Put(tx, store.Sessions, []byte(id), &s)
+	if err := store.Delete(tx, store.SessionsByUser, store.Key([]byte(s.UserId), []byte(id))); err != nil {
+		return false, err
+	}
+	return true, store.Put(tx, store.Sessions, []byte(id), &s)
 }
 
 func toSession(s *storepb.Session) *Session {

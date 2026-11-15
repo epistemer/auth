@@ -632,3 +632,245 @@ func TestEventsHoldNoSecret(t *testing.T) {
 		t.Errorf("a proof prints its secret: %s", s)
 	}
 }
+
+// Review 0004, finding 1: a flow proved with the old password can't finish
+// after the password changes.
+func TestPasswordChangeStalesFlows(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	f, err := k.signIn(t, "sara", goodPassword)
+	if err != nil || !f.Ready {
+		t.Fatalf("%+v %v", f, err)
+	}
+	k.clock.advance(time.Second)
+	if err := k.SetPassword(k.ctx, "u1", "violet engine sings 93 rivers"); err != nil {
+		t.Fatal(err)
+	}
+	if g, _ := k.Flow(k.ctx, f.Token); g.Ready {
+		t.Error("the flow is still ready")
+	}
+	if _, err := k.Finish(k.ctx, f.Token); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("Finish: %v", err)
+	}
+}
+
+// Review 0004, finding 2: a rehash replaces only the hash it verified.
+func TestRehashKeepsAChangedPassword(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	old, _ := k.passwordHash("u1")
+	if err := k.SetPassword(k.ctx, "u1", "violet engine sings 93 rivers"); err != nil {
+		t.Fatal(err)
+	}
+	changed, _ := k.passwordHash("u1")
+	// The sign-in that verified the old hash finishes its rehash late.
+	if _, err := k.storePassword("u1", "$argon2id$late", old); err != nil {
+		t.Fatal(err)
+	}
+	if cur, _ := k.passwordHash("u1"); cur != changed {
+		t.Fatal("a late rehash overwrote the changed password")
+	}
+}
+
+// Review 0004, finding 3: one proof of a method that may be first or
+// second is one factor.
+func TestOneProofIsOneFactor(t *testing.T) {
+	k := newKit(t)
+	k.first = []string{MethodPassword, MethodEmailCode}
+	at := k.clock.now().UnixNano()
+	code := &storepb.Factor{Method: MethodEmailCode, At: at}
+	pw := &storepb.Factor{Method: MethodPassword, At: at}
+	if k.twoFactors([]*storepb.Factor{code}) {
+		t.Error("an emailed code alone counts twice")
+	}
+	if !k.twoFactors([]*storepb.Factor{pw, code}) {
+		t.Error("a password and a code don't count as two")
+	}
+}
+
+// Review 0004, finding 5: concurrent proofs of one method make one factor.
+func TestConcurrentProofsOneFactor(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	f, err := k.SignIn(k.ctx, "sara", Cookie())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() { defer wg.Done(); k.Prove(k.ctx, f.Token, Password(goodPassword)) }()
+	}
+	wg.Wait()
+	res, err := k.Finish(k.ctx, f.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Session.Factors) != 1 {
+		t.Fatalf("factors %+v", res.Session.Factors)
+	}
+}
+
+// Review 0004, finding 6: a malformed stored hash costs the same one hash.
+func TestMalformedHashCostsOneHash(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	k.db.Update(func(tx *bolt.Tx) error {
+		return store.Put(tx, store.Credentials, passwordKey("u1"), &storepb.Credential{Method: MethodPassword, Data: []byte("$broken")})
+	})
+	n := k.hasher.Count()
+	if _, err := k.signIn(t, "sara", goodPassword); !errors.Is(err, ErrBadCredentials) {
+		t.Fatalf("got %v", err)
+	}
+	if d := k.hasher.Count() - n; d != 1 {
+		t.Fatalf("%d hashes", d)
+	}
+}
+
+// Review 0004, findings 7 and 8: the directory must answer for the ID it
+// was asked, and SetPassword checks the ID.
+func TestUserIDs(t *testing.T) {
+	k := newKit(t)
+	for _, id := range []UserID{"", "u1\x00spoof", UserID(strings.Repeat("x", 65))} {
+		if err := k.SetPassword(k.ctx, id, goodPassword); err == nil {
+			t.Errorf("%q accepted", id)
+		}
+	}
+}
+
+// Review 0004, finding 12: the disabled user's wrong password answers as
+// any other, with one hash.
+func TestDisabledAnswersAlike(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	k.dir.mu.Lock()
+	k.dir.users["sara"] = User{ID: "u1", Name: "sara", Disabled: true}
+	k.dir.mu.Unlock()
+	n := k.hasher.Count()
+	f, err := k.signIn(t, "sara", "wrong horse battery")
+	if !errors.Is(err, ErrBadCredentials) || k.hasher.Count()-n != 1 || !slices.Equal(f.Offers, []string{MethodPassword}) || f.Ready {
+		t.Fatalf("%+v %v", f, err)
+	}
+}
+
+// §5.6.2: a session ends at its idle lifetime, the remembered one, and
+// session.lifetime.
+func TestSessionLifetimes(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	start := func(opts ...FinishOption) *Session {
+		f, err := k.signIn(t, "sara", goodPassword)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := k.Finish(k.ctx, f.Token, opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Session
+	}
+	alive := func(s *Session) bool {
+		_, err := k.StepUp(k.ctx, s)
+		return err == nil
+	}
+	plain, kept := start(), start(Remember())
+	k.clock.advance(23 * time.Hour)
+	if !alive(plain) || !alive(kept) {
+		t.Fatal("ended early")
+	}
+	k.clock.advance(2 * time.Hour)
+	if alive(plain) || !alive(kept) {
+		t.Fatal("idle lifetimes")
+	}
+	// session.lifetime ends even a remembered session that is kept in use.
+	k.db.Update(func(tx *bolt.Tx) error {
+		var s storepb.Session
+		store.Get(tx, store.Sessions, []byte(kept.ID), &s)
+		s.Seen = k.clock.now().UnixNano()
+		s.Expires = k.clock.now().Add(time.Hour).UnixNano()
+		return store.Put(tx, store.Sessions, []byte(kept.ID), &s)
+	})
+	k.clock.advance(time.Hour)
+	if alive(kept) {
+		t.Fatal("session.lifetime")
+	}
+}
+
+// A step-up offers what is left to prove, and refuses a disabled user at
+// Finish.
+func TestStepUpOffersAndDisabled(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	f, _ := k.signIn(t, "sara", goodPassword)
+	res, err := k.Finish(k.ctx, f.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, _ := k.StepUp(k.ctx, res.Session)
+	up, err = k.Prove(k.ctx, up.Token, Password(goodPassword))
+	if err != nil || len(up.Offers) != 0 {
+		t.Fatalf("offers after the password: %v %v", up.Offers, err)
+	}
+	k.dir.mu.Lock()
+	k.dir.users["sara"] = User{ID: "u1", Name: "sara", Disabled: true}
+	k.dir.mu.Unlock()
+	if _, err := k.Finish(withSession(k.ctx, res.Session), up.Token); !errors.Is(err, ErrUserDisabled) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+// §5.1.11 and §5.6.4: the flow cookie, and both cookies' names with
+// cookie.insecure.
+func TestCookies(t *testing.T) {
+	f := Flow{Token: "t", Expires: time.Now().Add(time.Minute)}
+	w := httptest.NewRecorder()
+	f.Write(w)
+	c := w.Result().Cookies()[0]
+	if c.Name != "__Host-flow" || !c.Secure || !c.HttpOnly || c.Path != "/" || c.SameSite != 2 {
+		t.Fatalf("flow cookie %+v", c)
+	}
+	f.insecure = true
+	w = httptest.NewRecorder()
+	f.Write(w)
+	if c := w.Result().Cookies()[0]; c.Name != "flow" || c.Secure {
+		t.Fatalf("insecure flow cookie %+v", c)
+	}
+	w = httptest.NewRecorder()
+	Result{cookie: "s", insecure: true}.Write(w)
+	if c := w.Result().Cookies()[0]; c.Name != "session" || c.Secure || !c.Expires.IsZero() {
+		t.Fatalf("insecure session cookie %+v", c)
+	}
+}
+
+// Review 0004, finding 4: spending a flow checks its lifetime again, under
+// the write lock.
+func TestSpendChecksExpiry(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	f, _ := k.signIn(t, "sara", goodPassword)
+	k.clock.advance(15 * time.Minute)
+	err := k.db.Update(func(tx *bolt.Tx) error {
+		_, err := k.spend(tx, secrets.Hash(f.Token))
+		return err
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+type swapping struct{ *directory }
+
+func (s swapping) Get(ctx context.Context, id UserID) (User, error) {
+	return User{ID: id + "x", Name: "someone"}, nil
+}
+
+// A directory that answers for another ID than the one asked is refused.
+func TestDirectoryAnswersForTheID(t *testing.T) {
+	k := newKit(t)
+	k.dir2(swapping{k.dir})
+	if err := k.SetPassword(k.ctx, "u1", goodPassword); err == nil {
+		t.Fatal("accepted another user's record")
+	}
+}
+
+func (k *kit) dir2(d Directory) { k.Auth.dir = d }

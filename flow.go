@@ -243,8 +243,19 @@ type view struct {
 // look at the user at all, so a known and an unknown login answer alike
 // (§5.1.3). sess is the bound session of a StepUp; nil loads it.
 func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Session) (view, error) {
+	proofs := rec.Proofs
+	if rec.UserId != "" && len(proofs) > 0 {
+		var added int64
+		if err := a.db.View(func(tx *bolt.Tx) (err error) {
+			added, err = passwordAdded(tx, UserID(rec.UserId))
+			return err
+		}); err != nil {
+			return view{}, err
+		}
+		proofs = current(proofs, added)
+	}
 	proven := func(f func(string) bool) bool {
-		return slices.ContainsFunc(rec.Proofs, func(p *storepb.Factor) bool { return f(p.Method) })
+		return slices.ContainsFunc(proofs, func(p *storepb.Factor) bool { return f(p.Method) })
 	}
 	isFirst := func(m string) bool { return slices.Contains(a.first, m) }
 	switch Purpose(rec.Purpose) {
@@ -261,7 +272,7 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		if err != nil {
 			return view{}, err
 		}
-		verified := proven(isSecond)
+		verified := a.twoFactors(proofs)
 		v := view{verified: verified, ready: verified || pol.AllowUnverified}
 		if !verified {
 			v.offers = seconds
@@ -294,8 +305,8 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		if err != nil {
 			return view{}, err
 		}
-		verified := sess.Verified || proven(isSecond)
-		v := view{verified: verified, ready: len(rec.Proofs) > 0 && (verified || pol.AllowUnverified)}
+		verified := sess.Verified || a.twoFactors(append(slices.Clone(sess.Factors), proofs...))
+		v := view{verified: verified, ready: len(proofs) > 0 && (verified || pol.AllowUnverified)}
 		has, err := a.hasPassword(UserID(rec.UserId))
 		if err != nil {
 			return view{}, err
@@ -313,6 +324,32 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 
 func isSecond(m string) bool { return secondMethods[m] }
 
+// twoFactors reports whether proofs hold a first method and a second
+// method in two distinct proofs: a method that may be either, proved once,
+// is one factor, not two (§5.7.1).
+func (a *Auth) twoFactors(proofs []*storepb.Factor) bool {
+	for i, p := range proofs {
+		if !slices.Contains(a.first, p.Method) {
+			continue
+		}
+		for j, q := range proofs {
+			if i != j && isSecond(q.Method) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// current drops the password proofs made before the password last
+// changed: a flow proved with the old password can't finish after it
+// (§5.1.10).
+func current(proofs []*storepb.Factor, added int64) []*storepb.Factor {
+	return slices.DeleteFunc(slices.Clone(proofs), func(p *storepb.Factor) bool {
+		return p.Method == MethodPassword && p.At < added
+	})
+}
+
 // seconds are the second methods the user can prove now. The built-in ones
 // arrive with codes (M2) and authenticator apps (M4); until then a user has
 // none, and only a policy that allows unverified sessions lets one sign in.
@@ -325,6 +362,9 @@ func (a *Auth) user(ctx context.Context, id UserID) (User, error) {
 	u, err := a.dir.Get(ctx, id)
 	if err != nil {
 		return User{}, fmt.Errorf("auth: getting user: %w", err)
+	}
+	if u.ID != id {
+		return User{}, fmt.Errorf("auth: the directory returned another user for an ID")
 	}
 	return u, nil
 }
@@ -434,7 +474,7 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 	if rehash {
 		// A failure here costs only the upgrade; the next sign-in retries.
 		if phc, err := a.hasher.Hash(ctx, pw); err == nil {
-			_ = a.storePassword(u.ID, phc, false)
+			_, _ = a.storePassword(u.ID, phc, stored)
 		}
 	}
 	rec, err = a.addProof(hash, &storepb.Factor{Method: MethodPassword, At: a.now().UnixNano()})
@@ -463,7 +503,13 @@ func (a *Auth) addProof(hash []byte, f *storepb.Factor) (*storepb.Flow, error) {
 		if a.now().UnixNano() >= rec.Expires {
 			return store.ErrNotFound
 		}
-		rec.Proofs = append(rec.Proofs, f)
+		// One proof per method: concurrent proofs of one method make one
+		// factor, with the later time.
+		if i := slices.IndexFunc(rec.Proofs, func(p *storepb.Factor) bool { return p.Method == f.Method }); i >= 0 {
+			rec.Proofs[i].At = max(rec.Proofs[i].At, f.At)
+		} else {
+			rec.Proofs = append(rec.Proofs, f)
+		}
 		return store.Put(tx, store.Flows, hash, rec)
 	})
 	if errors.Is(err, store.ErrNotFound) {
@@ -524,25 +570,26 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 	err = a.db.Update(func(tx *bolt.Tx) error {
 		// The flow is spent here, in the transaction that makes the
 		// session: of two concurrent Finishes only one finds it.
-		if err := store.Get(tx, store.Flows, hash, new(storepb.Flow)); err != nil {
+		proofs, err := a.spend(tx, hash)
+		if err != nil {
 			return err
 		}
-		if err := store.Delete(tx, store.Flows, hash); err != nil {
-			return err
-		}
+		sess.Factors = proofs
 		// A sign-in never continues the session the request carries: that
 		// one ends, whoever it belonged to (§5.6.3).
 		if cur, ok := From(ctx); ok {
-			if err := a.endSession(tx, string(cur.ID)); err != nil {
+			if _, err := a.endSession(tx, string(cur.ID)); err != nil {
 				return err
 			}
 		}
 		return putSession(tx, sess)
 	})
-	if errors.Is(err, store.ErrNotFound) {
+	switch {
+	case errors.Is(err, store.ErrNotFound):
 		return Result{}, ErrFlowExpired
-	}
-	if err != nil {
+	case errors.Is(err, errChanged):
+		return Result{}, ErrNotReady
+	case err != nil:
 		return Result{}, err
 	}
 	a.record(ctx, Event{Kind: "session.created", User: u.ID, Session: SessionID(sess.Id), Reason: verifiedWord(sess.Verified)})
@@ -589,7 +636,8 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow)
 	token, tokenHash := secrets.NewToken()
 	sess := new(storepb.Session)
 	err = a.db.Update(func(tx *bolt.Tx) error {
-		if err := store.Get(tx, store.Flows, hash, new(storepb.Flow)); err != nil {
+		proofs, err := a.spend(tx, hash)
+		if err != nil {
 			return err
 		}
 		if err := store.Get(tx, store.Sessions, []byte(rec.SessionId), sess); err != nil {
@@ -601,19 +649,18 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow)
 		if err := store.Delete(tx, store.SessionTokens, sess.TokenHash); err != nil {
 			return err
 		}
-		if err := store.Delete(tx, store.Flows, hash); err != nil {
-			return err
-		}
 		sess.TokenHash = tokenHash
 		sess.Verified = sess.Verified || v.verified
 		sess.Generation++
-		sess.Factors = append(sess.Factors, rec.Proofs...)
+		sess.Factors = append(sess.Factors, proofs...)
 		sess.Claims = claims
 		return putSession(tx, sess)
 	})
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return Result{}, ErrFlowExpired
+	case errors.Is(err, errChanged):
+		return Result{}, ErrNotReady
 	case errors.Is(err, errNoSession):
 		return Result{}, ErrNoSession
 	case err != nil:
@@ -623,4 +670,29 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow)
 	return a.result(sess, token), nil
 }
 
-var errNoSession = errors.New("auth: the session ended")
+var (
+	errNoSession = errors.New("auth: the session ended")
+	errChanged   = errors.New("auth: the password changed since the flow's proof")
+)
+
+// spend deletes a flow in tx and returns its proofs. It reads the flow
+// again, under the write lock: a flow that expired, or whose password proof
+// a password change has made stale since the caller looked, isn't spent.
+func (a *Auth) spend(tx *bolt.Tx, hash []byte) ([]*storepb.Factor, error) {
+	var rec storepb.Flow
+	if err := store.Get(tx, store.Flows, hash, &rec); err != nil {
+		return nil, err
+	}
+	if a.now().UnixNano() >= rec.Expires {
+		return nil, store.ErrNotFound
+	}
+	added, err := passwordAdded(tx, UserID(rec.UserId))
+	if err != nil {
+		return nil, err
+	}
+	proofs := current(rec.Proofs, added)
+	if len(proofs) != len(rec.Proofs) {
+		return nil, errChanged
+	}
+	return proofs, store.Delete(tx, store.Flows, hash)
+}

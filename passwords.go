@@ -58,6 +58,9 @@ func (a *Auth) userHints(ctx context.Context, u User) ([]string, error) {
 // sessions and sends MsgPasswordChanged (§5.1.10); setting the first one
 // doesn't.
 func (a *Auth) SetPassword(ctx context.Context, id UserID, pw string) error {
+	if err := validID(id); err != nil {
+		return err
+	}
 	u, err := a.user(ctx, id)
 	if err != nil {
 		return err
@@ -73,15 +76,12 @@ func (a *Auth) SetPassword(ctx context.Context, id UserID, pw string) error {
 	if err != nil {
 		return err
 	}
-	had, err := a.hasPassword(id)
+	replaced, err := a.storePassword(id, phc, "")
 	if err != nil {
 		return err
 	}
-	if err := a.storePassword(id, phc, had); err != nil {
-		return err
-	}
 	a.record(ctx, Event{Kind: "password.set", User: id})
-	if had {
+	if replaced {
 		a.notify(ctx, u, MsgPasswordChanged)
 	}
 	return nil
@@ -106,24 +106,51 @@ func (a *Auth) hasPassword(id UserID) (bool, error) {
 	return h != "", err
 }
 
-// storePassword writes a user's hash. A change, as against a first
-// password or a rehash, also ends the user's sessions.
-func (a *Auth) storePassword(id UserID, phc string, change bool) error {
+// passwordAdded is when the user's password was last set, in Unix
+// nanoseconds; 0 for a user with none.
+func passwordAdded(tx *bolt.Tx, id UserID) (int64, error) {
+	if id == "" {
+		return 0, nil
+	}
+	var c storepb.Credential
+	err := store.Get(tx, store.Credentials, passwordKey(id), &c)
+	if errors.Is(err, store.ErrNotFound) {
+		return 0, nil
+	}
+	return c.Added, err
+}
+
+// storePassword writes a user's hash, in one transaction with what it
+// decides. With rehashOf set, it replaces only that hash, as a rehash at
+// sign-in does: a password changed meanwhile stays. Without, it sets the
+// password; replacing one is a change, which also ends the user's sessions
+// and makes older password proofs in flows stale.
+func (a *Auth) storePassword(id UserID, phc, rehashOf string) (replaced bool, err error) {
 	now := a.now().UnixNano()
-	return a.db.Update(func(tx *bolt.Tx) error {
+	err = a.db.Update(func(tx *bolt.Tx) error {
 		c := &storepb.Credential{Method: MethodPassword, Added: now}
-		if err := store.Get(tx, store.Credentials, passwordKey(id), c); err != nil && !errors.Is(err, store.ErrNotFound) {
+		err := store.Get(tx, store.Credentials, passwordKey(id), c)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
-		c.Data = []byte(phc)
-		if change {
-			c.Added = now
+		exists := err == nil
+		if rehashOf != "" {
+			if !exists || string(c.Data) != rehashOf {
+				return nil
+			}
+			c.Data = []byte(phc)
+			return store.Put(tx, store.Credentials, passwordKey(id), c)
+		}
+		c.Data, c.Added = []byte(phc), now
+		if exists {
+			replaced = true
 			if _, err := a.endSessions(tx, id, ""); err != nil {
 				return err
 			}
 		}
 		return store.Put(tx, store.Credentials, passwordKey(id), c)
 	})
+	return replaced, err
 }
 
 // notify sends a notice to the user's email, or their phone when they have

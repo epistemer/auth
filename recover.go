@@ -294,7 +294,7 @@ func (a *Auth) finishPassword(ctx context.Context, hash []byte, rec *storepb.Flo
 				return err
 			}
 		}
-		replaced, ended, err = a.storePasswordTx(tx, u.ID, phc, "")
+		replaced, ended, err = a.storePasswordTx(tx, u.ID, phc, "", "")
 		if err != nil {
 			return err
 		}

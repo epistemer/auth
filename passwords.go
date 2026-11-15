@@ -131,14 +131,15 @@ func passwordAdded(tx *bolt.Tx, id UserID) (int64, error) {
 func (a *Auth) storePassword(id UserID, phc, rehashOf string) (replaced bool, ended []string, err error) {
 	err = a.db.Update(func(tx *bolt.Tx) error {
 		var err error
-		replaced, ended, err = a.storePasswordTx(tx, id, phc, rehashOf)
+		replaced, ended, err = a.storePasswordTx(tx, id, phc, rehashOf, "")
 		return err
 	})
 	return replaced, ended, err
 }
 
-// storePasswordTx is storePassword in a transaction of the caller's.
-func (a *Auth) storePasswordTx(tx *bolt.Tx, id UserID, phc, rehashOf string) (replaced bool, ended []string, err error) {
+// storePasswordTx is storePassword in a transaction of the caller's. A
+// change ends the user's sessions but keep, the one that made it.
+func (a *Auth) storePasswordTx(tx *bolt.Tx, id UserID, phc, rehashOf, keep string) (replaced bool, ended []string, err error) {
 	now := a.now().UnixNano()
 	c := &storepb.Credential{Method: MethodPassword, Added: now}
 	err = store.Get(tx, store.Credentials, passwordKey(id), c)
@@ -154,9 +155,11 @@ func (a *Auth) storePasswordTx(tx *bolt.Tx, id UserID, phc, rehashOf string) (re
 		return false, nil, store.Put(tx, store.Credentials, passwordKey(id), c)
 	}
 	c.Data, c.Added = []byte(phc), now
-	if exists {
-		replaced = true
-		if ended, err = a.endSessions(tx, id, ""); err != nil {
+	replaced = exists
+	// A change ends the user's sessions but the one that made it; so does
+	// a first password set from a session (keep), which is a change too.
+	if exists || keep != "" {
+		if ended, err = a.endSessions(tx, id, keep); err != nil {
 			return false, nil, err
 		}
 	}

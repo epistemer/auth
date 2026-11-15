@@ -3,6 +3,26 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: changing factors (M4.1)
+
+- **Landed** (PR #13, on top of #12 and those under it): `Enroll`,
+  `Factors`, `RemoveFactor`, `ResetFactors`, and changing a password
+  through `Enroll` (§5.1.9–10).
+  - A change needs a verified session and a proof within `fresh.window`;
+    for a user with an enrolled factor, of a second method: never a device,
+    a password or an emailed code.
+  - Changing the password keeps the session that made it, ends the others,
+    forgets devices and sends `MsgPasswordChanged`.
+  - [Review 0013](reviews/0013-m4.1-enroll.md) by Gemini 4 Argon (High),
+    about 82k tokens: eleven findings, ten accepted in full or in part. The
+    two that mattered: §5.1.9 was checked before the password was hashed
+    but not in the transaction after, so a factor enrolled meanwhile was
+    missed; and a first password set from a session ended no other session.
+- **Decided:** amendment A15.
+- **Still waiting on you:** the ruleset's required check, which holds #9
+  and the PRs stacked on it (now five).
+- **Next:** M4.2, TOTP.
+
 ## 2026-11-16: refresh tokens (M3.2)
 
 - **Landed** (PR #12, on top of #11, #10 and #9): `Refresh` and `Reissue`

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -275,6 +276,7 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		verified := a.twoFactors(proofs)
 		v := view{verified: verified, ready: verified || pol.AllowUnverified}
 		if !verified {
+			seconds = slices.DeleteFunc(seconds, func(m string) bool { return proven(func(p string) bool { return p == m }) })
 			v.offers = seconds
 			v.cannot = !pol.AllowUnverified && len(seconds) == 0
 		}
@@ -326,16 +328,21 @@ func isSecond(m string) bool { return secondMethods[m] }
 
 // twoFactors reports whether proofs hold a first method and a second
 // method in two distinct proofs: a method that may be either, proved once,
-// is one factor, not two (§5.7.1).
+// is one factor, not two (§5.7.1), and two proofs that reached the user
+// through one address are one (§5.7.2).
 func (a *Auth) twoFactors(proofs []*storepb.Factor) bool {
 	for i, p := range proofs {
 		if !slices.Contains(a.first, p.Method) {
 			continue
 		}
 		for j, q := range proofs {
-			if i != j && isSecond(q.Method) {
-				return true
+			if i == j || !isSecond(q.Method) {
+				continue
 			}
+			if len(p.Channel) > 0 && bytes.Equal(p.Channel, q.Channel) {
+				continue
+			}
+			return true
 		}
 	}
 	return false
@@ -350,11 +357,34 @@ func current(proofs []*storepb.Factor, added int64) []*storepb.Factor {
 	})
 }
 
-// seconds are the second methods the user can prove now. The built-in ones
-// arrive with codes (M2) and authenticator apps (M4); until then a user has
-// none, and only a policy that allows unverified sessions lets one sign in.
+// seconds are the second methods the user can prove now (§5.7.2): their
+// enrolled factors, or, with none enrolled, a code to each address the
+// directory has. Factors arrive with M4; until then every user is the
+// second case.
 func (a *Auth) seconds(ctx context.Context, u User) ([]string, error) {
-	return nil, nil
+	enrolled, err := a.enrolled(u.ID)
+	if err != nil {
+		return nil, err
+	}
+	if len(enrolled) > 0 {
+		return enrolled, nil
+	}
+	return a.addresses(ctx, u)
+}
+
+// enrolled returns the second methods the user has a credential for.
+func (a *Auth) enrolled(id UserID) ([]string, error) {
+	var out []string
+	err := a.db.View(func(tx *bolt.Tx) error {
+		return store.Scan(tx, store.Credentials, store.Prefix([]byte(id)), func(k, _ []byte) error {
+			method, _, _ := strings.Cut(string(k[len(id)+1:]), "\x00")
+			if isSecond(method) && !slices.Contains(out, method) {
+				out = append(out, method)
+			}
+			return nil
+		})
+	})
+	return out, err
 }
 
 // user gets a user the flow already resolved.
@@ -420,13 +450,15 @@ func (a *Auth) Prove(ctx context.Context, token string, p Proof) (Flow, error) {
 	if p == nil || !slices.Contains(v.offers, p.Method()) {
 		return a.flowOut(token, rec, v), ErrMethodUnavailable
 	}
+	s, ok := p.(secret)
+	if !ok {
+		return a.flowOut(token, rec, v), ErrMethodUnavailable
+	}
 	switch p.Method() {
 	case MethodPassword:
-		s, ok := p.(secret)
-		if !ok {
-			return a.flowOut(token, rec, v), ErrMethodUnavailable
-		}
 		return a.provePassword(ctx, token, hash, rec, v, s.value)
+	case MethodEmailCode, MethodSMSCode:
+		return a.proveCode(ctx, token, hash, rec, v, s.method, s.value)
 	}
 	return a.flowOut(token, rec, v), ErrMethodUnavailable
 }

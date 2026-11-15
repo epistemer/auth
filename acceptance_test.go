@@ -598,3 +598,128 @@ func TestAuthtestConfig(t *testing.T) {
 		t.Errorf("events %v", ev)
 	}
 }
+
+// code returns the last code sent to an address, and keeps it as a secret
+// no event may hold.
+func (s *shop) code(to string) string {
+	s.t.Helper()
+	m, ok := s.LastMessage(to)
+	if !ok || m.Code == "" {
+		s.t.Fatalf("no code sent to %s", to)
+	}
+	s.secrets = append(s.secrets, m.Code)
+	return m.Code
+}
+
+// Codes: a code is refused after code.tries wrong tries, in another flow,
+// after its lifetime, and the second time; a second Challenge inside
+// code.resend sends nothing and a later one cancels the first code.
+func TestAcceptCodes(t *testing.T) {
+	s := newShop(t)
+	const mail = "sara@toyshop.example"
+	other := func(c string) string {
+		if c == "000000" {
+			return "000001"
+		}
+		return "000000"
+	}
+	start := func() auth.Flow {
+		f, err := s.try(s.ctx, "sara", pw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Auth.Challenge(s.ctx, f.Token, auth.MethodEmailCode); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	f := start()
+	c := s.code(mail)
+	for range 5 {
+		s.Auth.Prove(s.ctx, f.Token, auth.EmailCode(other(c)))
+	}
+	s.Clock.Advance(time.Second) // past the throttle's wait, which the five also started
+	if _, err := s.Auth.Prove(s.ctx, f.Token, auth.EmailCode(c)); !errors.Is(err, auth.ErrBadCode) {
+		t.Errorf("after code.tries: %v", err)
+	}
+	s.Clock.Advance(time.Minute) // clear of the throttle's wait
+
+	a, b := start(), func() auth.Flow { f, _ := s.try(s.ctx, "sara", pw); return f }()
+	ca := s.code(mail)
+	if _, err := s.Auth.Prove(s.ctx, b.Token, auth.EmailCode(ca)); !errors.Is(err, auth.ErrBadCode) {
+		t.Errorf("in another flow: %v", err)
+	}
+	s.Clock.Advance(5 * time.Minute)
+	if _, err := s.Auth.Prove(s.ctx, a.Token, auth.EmailCode(ca)); !errors.Is(err, auth.ErrBadCode) {
+		t.Errorf("after its lifetime: %v", err)
+	}
+
+	f = start()
+	c = s.code(mail)
+	if _, err := s.Auth.Prove(s.ctx, f.Token, auth.EmailCode(c)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Auth.Prove(s.ctx, f.Token, auth.EmailCode(c)); err == nil {
+		t.Error("accepted the second time")
+	}
+
+	f = start()
+	first := s.code(mail)
+	n := len(s.Events())
+	if _, err := s.Auth.Challenge(s.ctx, f.Token, auth.MethodEmailCode); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range s.Events()[n:] {
+		if e.Kind == "code.sent" {
+			t.Error("a code was sent inside code.resend")
+		}
+	}
+	s.Clock.Advance(time.Minute)
+	s.Auth.Challenge(s.ctx, f.Token, auth.MethodEmailCode)
+	if next := s.code(mail); next != first {
+		if _, err := s.Auth.Prove(s.ctx, f.Token, auth.EmailCode(first)); !errors.Is(err, auth.ErrBadCode) {
+			t.Errorf("the cancelled code: %v", err)
+		}
+	}
+}
+
+// Enumeration: Challenge answers alike for a known and an unknown login,
+// and only the known one is sent a message; before the first proof SentTo
+// is empty; past code.hourly it answers the same and sends nothing.
+func TestAcceptChallengeEnumeration(t *testing.T) {
+	s := newShop(t, auth.WithFirst(auth.MethodPassword, auth.MethodEmailCode))
+	ask := func(login string) auth.Challenge {
+		f, err := s.Auth.SignIn(s.ctx, login, auth.Cookie())
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.secrets = append(s.secrets, f.Token)
+		c, err := s.Auth.Challenge(s.ctx, f.Token, auth.MethodEmailCode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	sent := func() int {
+		n := 0
+		for _, e := range s.Events() {
+			if e.Kind == "code.sent" {
+				n++
+			}
+		}
+		return n
+	}
+	want := ask("sara")
+	if want.SentTo != "" || sent() != 1 {
+		t.Fatalf("sara: %+v", want)
+	}
+	if got := ask("ghost"); got != want || sent() != 1 {
+		t.Errorf("an unknown login: %+v", got)
+	}
+	for range 4 {
+		ask("sara")
+	}
+	if got := ask("sara"); got != want || sent() != 5 {
+		t.Errorf("past code.hourly: %+v, %d sent", got, sent())
+	}
+}

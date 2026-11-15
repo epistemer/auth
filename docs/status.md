@@ -3,6 +3,29 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: codes (M2.1)
+
+- PR #7 (M1.6) merged on green. You're allowing auto-merge in the repo;
+  from M2.1 on, PRs merge themselves once CI passes.
+- **Landed** (PR #8): codes sent by email or SMS (§5.3).
+  - `Challenge` sends a code, answering alike whatever happened (§5.1.5):
+    an unknown login, no address, a directory error, a failed send, inside
+    `code.resend`, past `code.hourly`. What happened is an event.
+  - `EmailCode` and `SMSCode` proofs: a try is counted before the code is
+    compared, in one transaction; a code is bound to its flow, its purpose
+    and its method, and burnt by its last try or its first use. Wrong codes
+    count toward throttling too.
+  - With no factor enrolled, a code to each address the directory has is a
+    second proof, and two proofs through one address count as one (§5.7.2).
+    `WithFirst` may name the code methods, for sign-in by code.
+  - [Review 0008](reviews/0008-m2.1-codes.md) by Gemini 4 Argon (High),
+    about 90k tokens: twelve findings, six accepted and two in part. The one
+    that mattered was mine: a code that was never sent had a real MAC, so it
+    could be guessed with every new flow.
+- **Decided:** amendment A10. Links and `Follow` move to M2.2 with
+  `Recover`, the only flow that sends a link.
+- **Next:** M2.2, links, `Recover`, `Invite` and `Accept`.
+
 ## 2026-11-15: authschema, authtest and the acceptance tests (M1.6)
 
 - PR #6 (M1.5) merged on green.

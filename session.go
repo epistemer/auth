@@ -83,8 +83,12 @@ func putSession(tx *bolt.Tx, s *storepb.Session) error {
 	if err := store.Put(tx, store.Sessions, []byte(s.Id), s); err != nil {
 		return err
 	}
-	if err := store.B(tx, store.SessionTokens).Put(s.TokenHash, []byte(s.Id)); err != nil {
-		return err
+	// Only a cookie session is found by its token; a bearer session by the
+	// access token's sid.
+	if s.Carrier == storepb.Carrier_CARRIER_COOKIE {
+		if err := store.B(tx, store.SessionTokens).Put(s.TokenHash, []byte(s.Id)); err != nil {
+			return err
+		}
 	}
 	return store.B(tx, store.SessionsByUser).Put(store.Key([]byte(s.UserId), []byte(s.Id)), nil)
 }
@@ -134,6 +138,9 @@ func (a *Auth) endSession(tx *bolt.Tx, id string) (bool, error) {
 		return false, err
 	}
 	if err := store.Delete(tx, store.SessionsByUser, store.Key([]byte(s.UserId), []byte(id))); err != nil {
+		return false, err
+	}
+	if err := endRefresh(tx, id); err != nil {
 		return false, err
 	}
 	return true, store.Put(tx, store.Sessions, []byte(id), &s)
@@ -196,6 +203,11 @@ type Result struct {
 	insecure      bool
 	device        string // the cookie carrier's device token, new or replaced
 	deviceExpires time.Time
+}
+
+// withBearer puts a bearer session's tokens in the result.
+func (r *Result) withBearer(access, refresh string) {
+	r.Access, r.Refresh = access, refresh
 }
 
 // withDevice puts a device token in the result, for its carrier.

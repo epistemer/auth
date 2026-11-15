@@ -3,6 +3,24 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: the access token (M3.1)
+
+- **Landed** (PR #11, on top of #10 and #9): the bearer carrier (§5.6.5–6).
+  - `SignIn(Bearer())`; `Finish` returns an access token and a refresh
+    token; a step-up issues both again at the new generation, so older
+    access tokens stop working.
+  - `Load(Bearer())` checks the token: the header's bytes, the signature in
+    constant time, `exp`, `iat`, `iss`, `aud`, then the session `sid` names,
+    which must be a live bearer session of `sub` at generation `gen`.
+    Whether a request is verified comes from the session; its claims from
+    the token.
+  - [Review 0011](reviews/0011-m3.1-access.md) by Gemini 4 Argon (High),
+    about 74k tokens: eight findings, seven accepted, one in part.
+- **Decided:** amendment A13.
+- **Still waiting on you:** the ruleset's required check (see 2026-11-15),
+  which holds #9, and with it #10 and #11.
+- **Next:** M3.2, `Refresh`, `Reissue` and the `Claimer`.
+
 ## 2026-11-15: devices (M2.3)
 
 - PR #9 (M2.2) is green but blocked: the ruleset "CI check" requires

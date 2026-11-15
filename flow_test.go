@@ -614,13 +614,6 @@ func TestSetPasswordEndsSessions(t *testing.T) {
 	}
 }
 
-func TestBearerArrivesLater(t *testing.T) {
-	k := newKit(t)
-	if _, err := k.SignIn(k.ctx, "sara", Bearer()); !errors.Is(err, errors.ErrUnsupported) {
-		t.Fatalf("got %v", err)
-	}
-}
-
 // §7, secrets: no event holds a password or a token the test used.
 func TestEventsHoldNoSecret(t *testing.T) {
 	k := newKit(t, WithPolicy(allowUnverified))

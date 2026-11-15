@@ -54,7 +54,7 @@ generated, and how keys come from the master secret (§5.12).
   version is newer than the code's is refused, so an old binary never writes
   records it doesn't understand.
 
-**Records** are in `internal/storepb/records.proto`. Times are Unix
+**Records** are in `internal/storepb/auth_records.proto` (renamed from `records.proto` in M1.3: i18n registers a file of that name). Times are Unix
 nanoseconds. No field holds a password, a code, a token or a key as it
 travelled. Encoding is deterministic.
 

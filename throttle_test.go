@@ -24,7 +24,7 @@ func (k *kit) from(addr string) context.Context {
 
 // try signs in as login with pw from ctx's client, and reports the error
 // and the hashes it cost.
-func (k *kit) try(t *testing.T, ctx context.Context, login, pw string) (error, int64) {
+func (k *kit) try(t *testing.T, ctx context.Context, login, pw string) (int64, error) {
 	t.Helper()
 	f, err := k.SignIn(ctx, login, Cookie())
 	if err != nil {
@@ -32,7 +32,7 @@ func (k *kit) try(t *testing.T, ctx context.Context, login, pw string) (error, i
 	}
 	n := k.hasher.Count()
 	_, err = k.Prove(ctx, f.Token, Password(pw))
-	return err, k.hasher.Count() - n
+	return k.hasher.Count() - n, err
 }
 
 // counterOf reads one counter of the subject.
@@ -72,12 +72,12 @@ func TestThrottleSixth(t *testing.T) {
 			ctx = k.from("192.0.2.2")
 		}
 		for i := 1; i <= 5; i++ {
-			if err, hashes := k.try(t, ctx, login, wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
+			if hashes, err := k.try(t, ctx, login, wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
 				t.Fatalf("%s, failure %d: %v, %d hashes", login, i, err, hashes)
 			}
 		}
 		for n := 6; n <= 20; n++ {
-			err, hashes := k.try(t, ctx, login, goodPassword)
+			hashes, err := k.try(t, ctx, login, goodPassword)
 			if !errors.Is(err, ErrTooManyAttempts) || hashes != 0 {
 				t.Fatalf("%s, attempt %d: %v, %d hashes", login, n, err, hashes)
 			}
@@ -95,7 +95,7 @@ func TestThrottleSixth(t *testing.T) {
 	}
 	// Once the wait is over the right password signs in.
 	k.clock.advance(15 * time.Minute)
-	if err, _ := k.try(t, k.from("192.0.2.1"), "sara", goodPassword); err != nil {
+	if _, err := k.try(t, k.from("192.0.2.1"), "sara", goodPassword); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -107,26 +107,26 @@ func TestThrottleOtherAddress(t *testing.T) {
 	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
 	a, b, c := k.from("192.0.2.1"), k.from("198.51.100.7"), k.from("203.0.113.9")
 	for _, login := range []string{"one", "two", "three", "four", "five"} {
-		if err, _ := k.try(t, a, login, wrongPassword); !errors.Is(err, ErrBadCredentials) {
+		if _, err := k.try(t, a, login, wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
 	// a is in a wait; sara isn't, from b. The refused try counts against
 	// sara too.
-	if err, _ := k.try(t, a, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
+	if _, err := k.try(t, a, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
 		t.Fatalf("from the waiting address: %v", err)
 	}
-	if err, hashes := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
+	if hashes, err := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
 		t.Fatalf("from another address: %v, %d hashes", err, hashes)
 	}
 	// Three more failures from b make five against sara: then no address
 	// gets through.
 	for range 3 {
-		if err, _ := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
+		if _, err := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
-	if err, hashes := k.try(t, c, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) || hashes != 0 {
+	if hashes, err := k.try(t, c, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) || hashes != 0 {
 		t.Fatalf("after the login's own counter: %v, %d hashes", err, hashes)
 	}
 }
@@ -192,11 +192,11 @@ func TestThrottleSpellings(t *testing.T) {
 			}
 			// A new address each time, so only the login's counter adds up.
 			ctx := k.from(netip.AddrFrom4([4]byte{192, 0, 2, byte(10 + i)}).String())
-			if err, _ := k.try(t, ctx, login, wrongPassword); !errors.Is(err, ErrBadCredentials) {
+			if _, err := k.try(t, ctx, login, wrongPassword); !errors.Is(err, ErrBadCredentials) {
 				t.Fatalf("%s, %q: %v", base, login, err)
 			}
 		}
-		if err, _ := k.try(t, k.from("192.0.2.99"), base, goodPassword); !errors.Is(err, ErrTooManyAttempts) {
+		if _, err := k.try(t, k.from("192.0.2.99"), base, goodPassword); !errors.Is(err, ErrTooManyAttempts) {
 			t.Errorf("%s: the sixth try from any spelling: %v", base, err)
 		}
 	}
@@ -211,7 +211,7 @@ func TestThrottleWindow(t *testing.T) {
 	fail := func(n int) {
 		t.Helper()
 		for i := range n {
-			if err, hashes := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
+			if hashes, err := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
 				t.Fatalf("failure %d: %v, %d hashes", i+1, err, hashes)
 			}
 		}
@@ -221,13 +221,13 @@ func TestThrottleWindow(t *testing.T) {
 	// waits two seconds.
 	k.clock.advance(time.Second)
 	fail(1)
-	err, _ := k.try(t, ctx, "sara", wrongPassword)
+	_, err := k.try(t, ctx, "sara", wrongPassword)
 	if d, _ := RetryAfter(err); d != 4*time.Second {
 		t.Fatalf("after a sixth failure: %v, %v", err, d)
 	}
 	k.clock.advance(time.Hour)
 	fail(5)
-	if err, _ := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrTooManyAttempts) {
+	if _, err := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrTooManyAttempts) {
 		t.Fatal(err)
 	}
 
@@ -253,11 +253,11 @@ func TestThrottleSuccess(t *testing.T) {
 	k.addUser(t, "omar", User{ID: "u2", Name: "omar"}, goodPassword)
 	office := k.from("192.0.2.1")
 	for range 4 {
-		if err, _ := k.try(t, office, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
+		if _, err := k.try(t, office, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
-	if err, _ := k.try(t, office, "sara", goodPassword); err != nil {
+	if _, err := k.try(t, office, "sara", goodPassword); err != nil {
 		t.Fatal(err)
 	}
 	s := userSubject("u1", "192.0.2.1")
@@ -271,15 +271,15 @@ func TestThrottleSuccess(t *testing.T) {
 		t.Errorf("address counter %v after a success; want 4 failures", c)
 	}
 	for i := range 20 {
-		if err, _ := k.try(t, office, "omar", goodPassword); err != nil {
+		if _, err := k.try(t, office, "omar", goodPassword); err != nil {
 			t.Fatalf("sign-in %d from the office: %v", i+1, err)
 		}
 	}
 	// A fifth failure from the office puts it in a wait, successes or not.
-	if err, _ := k.try(t, office, "nobody", wrongPassword); !errors.Is(err, ErrBadCredentials) {
+	if _, err := k.try(t, office, "nobody", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 		t.Fatal(err)
 	}
-	if err, _ := k.try(t, office, "omar", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
+	if _, err := k.try(t, office, "omar", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
 		t.Fatalf("a stranger's own sign-in cleared the address: %v", err)
 	}
 }
@@ -479,14 +479,14 @@ func TestDisabledStaysCounted(t *testing.T) {
 	k.addUser(t, "sara", User{ID: "u1", Name: "sara", Disabled: true}, goodPassword)
 	ctx := k.from("192.0.2.1")
 	for range 4 {
-		if err, _ := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
+		if _, err := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
-	if err, _ := k.try(t, ctx, "sara", goodPassword); !errors.Is(err, ErrUserDisabled) {
+	if _, err := k.try(t, ctx, "sara", goodPassword); !errors.Is(err, ErrUserDisabled) {
 		t.Fatal(err)
 	}
-	if err, _ := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrTooManyAttempts) {
+	if _, err := k.try(t, ctx, "sara", wrongPassword); !errors.Is(err, ErrTooManyAttempts) {
 		t.Errorf("after a disabled user's right password: %v", err)
 	}
 }
@@ -500,21 +500,21 @@ func TestThrottleOneLoginOneAddress(t *testing.T) {
 	k.addUser(t, "omar", User{ID: "u2", Name: "omar"}, goodPassword)
 	a, b := k.from("192.0.2.1"), k.from("198.51.100.7")
 	for range 5 {
-		if err, _ := k.try(t, a, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
+		if _, err := k.try(t, a, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
-	if err, _ := k.try(t, b, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
+	if _, err := k.try(t, b, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
 		t.Fatalf("the login's own counter: %v", err)
 	}
 	k.clock.advance(5 * time.Second)
-	if err, _ := k.try(t, b, "sara", goodPassword); err != nil {
+	if _, err := k.try(t, b, "sara", goodPassword); err != nil {
 		t.Fatal(err)
 	}
 	// The user's counter is clear: b gets its tries. The pair (a, sara)
 	// is still counted: its next failure starts a wait there.
 	for range 4 {
-		if err, _ := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
+		if _, err := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
@@ -523,7 +523,7 @@ func TestThrottleOneLoginOneAddress(t *testing.T) {
 	}
 	// Omar from a is held by a's own counter, which a success elsewhere
 	// doesn't clear.
-	if err, _ := k.try(t, a, "omar", goodPassword); err != nil {
+	if _, err := k.try(t, a, "omar", goodPassword); err != nil {
 		t.Fatalf("a's wait is over: %v", err)
 	}
 }
@@ -533,14 +533,14 @@ func TestThrottleNoAddress(t *testing.T) {
 	k := newKit(t, WithPolicy(allowUnverified))
 	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
 	for range 5 {
-		if err, _ := k.try(t, k.ctx, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
+		if _, err := k.try(t, k.ctx, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
 	}
-	if err, hashes := k.try(t, k.ctx, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) || hashes != 0 {
+	if hashes, err := k.try(t, k.ctx, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) || hashes != 0 {
 		t.Errorf("sixth without an address: %v, %d hashes", err, hashes)
 	}
-	if err, _ := k.try(t, k.from("192.0.2.1"), "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
+	if _, err := k.try(t, k.from("192.0.2.1"), "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
 		t.Errorf("the user's counter didn't hold for an address: %v", err)
 	}
 }

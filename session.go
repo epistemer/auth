@@ -53,10 +53,24 @@ func withSession(ctx context.Context, s *Session) context.Context {
 	return context.WithValue(ctx, sessionKey{}, s)
 }
 
+type carriedKey struct{}
+
+// carried returns the live cookie session a request carried, whether or
+// not Load attached it: one beside a bearer header isn't attached, but
+// signing in or out still ends it (§5.6.3).
+func carried(ctx context.Context) (*Session, bool) {
+	if s, ok := ctx.Value(carriedKey{}).(*Session); ok && s != nil {
+		return s, true
+	}
+	return From(ctx)
+}
+
 // live reports whether a session can still be used: not ended, within
 // session.lifetime, and seen within its idle lifetime (§5.6.2).
-func (a *Auth) live(s *storepb.Session) bool {
-	now := a.now().UnixNano()
+func (a *Auth) live(s *storepb.Session) bool { return a.liveAt(s, a.now().UnixNano()) }
+
+// liveAt is live at a given time, so one decision reads the clock once.
+func (a *Auth) liveAt(s *storepb.Session, now int64) bool {
 	idle := a.cfg.AuthSessionIdle()
 	if s.Remembered {
 		idle = a.cfg.AuthSessionRememberedIdle()

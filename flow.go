@@ -591,7 +591,7 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		sess.Factors = proofs
 		// A sign-in never continues the session the request carries: that
 		// one ends, whoever it belonged to (§5.6.3).
-		if cur, ok := From(ctx); ok {
+		if cur, ok := carried(ctx); ok {
 			if _, err := a.endSession(tx, string(cur.ID)); err != nil {
 				return err
 			}

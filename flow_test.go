@@ -33,6 +33,7 @@ type config struct {
 	minLength        int
 	memory, passes   int
 	insecure         bool
+	origins          []string
 }
 
 func defaults() *config {
@@ -70,7 +71,7 @@ func (c *config) AuthThrottleFree() int                    { return 5 }
 func (c *config) AuthThrottleCeiling() time.Duration       { return 15 * time.Minute }
 func (c *config) AuthThrottleWindow() time.Duration        { return time.Hour }
 func (c *config) AuthCookieInsecure() bool                 { return c.insecure }
-func (c *config) AuthTrustedOrigins() []string             { return nil }
+func (c *config) AuthTrustedOrigins() []string             { return c.origins }
 
 type directory struct {
 	mu    sync.Mutex
@@ -159,6 +160,16 @@ const goodPassword = "orange tiger juggles 47 lamps"
 
 func newKit(t *testing.T, opts ...Option) *kit {
 	t.Helper()
+	return newKitWith(t, nil, opts...)
+}
+
+// newKitWith is newKit with the config edited first.
+func newKitWith(t *testing.T, edit func(*config), opts ...Option) *kit {
+	t.Helper()
+	cfg := defaults()
+	if edit != nil {
+		edit(cfg)
+	}
 	db, err := bolt.Open(filepath.Join(t.TempDir(), "auth.db"), 0o600, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +183,7 @@ func newKit(t *testing.T, opts ...Option) *kit {
 		ctx:    context.Background(),
 	}
 	opts = append([]Option{WithRecorder(k.events), WithClock(k.clock.now)}, opts...)
-	k.Auth, err = New(db, defaults(), k.dir, k.out, opts...)
+	k.Auth, err = New(db, cfg, k.dir, k.out, opts...)
 	if err != nil {
 		t.Fatal(err)
 	}

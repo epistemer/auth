@@ -150,4 +150,6 @@ message Counter {
   // Bumped by every write, so a success can tell whether another attempt
   // touched the counter since its own (ADR 0007).
   uint64 seq = 4;
+  // A send counter's sends in the last hour (§5.3.5), oldest first.
+  repeated int64 sent = 5;
 }

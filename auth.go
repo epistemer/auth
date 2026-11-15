@@ -231,7 +231,7 @@ func clientFrom(ctx context.Context) Client {
 
 // builtIn are the methods the core implements, by the milestone that adds
 // them. A method named in WithFirst must be one of these or a module's.
-var builtIn = map[string]bool{MethodPassword: true}
+var builtIn = map[string]bool{MethodPassword: true, MethodEmailCode: true, MethodSMSCode: true}
 
 // New returns an Auth over db. It refuses a master secret shorter than 32
 // bytes and a config whose values fall outside interface §4.8's ranges.

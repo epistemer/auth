@@ -34,6 +34,9 @@ type config struct {
 	memory, passes   int
 	insecure         bool
 	origins          []string
+	free, tries      int
+	codeLen          int
+	window           time.Duration
 }
 
 func defaults() *config {
@@ -41,6 +44,7 @@ func defaults() *config {
 		issuer: "toyshop", secret: cfgx.NewSecret(strings.Repeat("k", 32)),
 		idle: 24 * time.Hour, remembered: 720 * time.Hour, lifetime: 2160 * time.Hour,
 		flow: 15 * time.Minute, minLength: 12, memory: 19, passes: 1,
+		free: 5, tries: 5, window: time.Hour, codeLen: 6,
 	}
 }
 
@@ -54,9 +58,9 @@ func (c *config) AuthAccessLifetime() time.Duration        { return 10 * time.Mi
 func (c *config) AuthRefreshGrace() time.Duration          { return 10 * time.Second }
 func (c *config) AuthFlowLifetime() time.Duration          { return c.flow }
 func (c *config) AuthFreshWindow() time.Duration           { return 10 * time.Minute }
-func (c *config) AuthCodeLength() int                      { return 6 }
+func (c *config) AuthCodeLength() int                      { return c.codeLen }
 func (c *config) AuthCodeLifetime() time.Duration          { return 5 * time.Minute }
-func (c *config) AuthCodeTries() int                       { return 5 }
+func (c *config) AuthCodeTries() int                       { return c.tries }
 func (c *config) AuthCodeResend() time.Duration            { return time.Minute }
 func (c *config) AuthCodeHourly() int                      { return 5 }
 func (c *config) AuthLinkLifetime() time.Duration          { return 30 * time.Minute }
@@ -67,9 +71,9 @@ func (c *config) AuthPasswordMinScore() int                { return 4 }
 func (c *config) AuthPasswordMemory() int                  { return c.memory }
 func (c *config) AuthPasswordTime() int                    { return c.passes }
 func (c *config) AuthPasswordConcurrency() int             { return 4 }
-func (c *config) AuthThrottleFree() int                    { return 5 }
+func (c *config) AuthThrottleFree() int                    { return c.free }
 func (c *config) AuthThrottleCeiling() time.Duration       { return 15 * time.Minute }
-func (c *config) AuthThrottleWindow() time.Duration        { return time.Hour }
+func (c *config) AuthThrottleWindow() time.Duration        { return c.window }
 func (c *config) AuthCookieInsecure() bool                 { return c.insecure }
 func (c *config) AuthTrustedOrigins() []string             { return c.origins }
 
@@ -108,11 +112,15 @@ func (d *directory) Address(_ context.Context, id UserID, ch Channel) (string, e
 type outbox struct {
 	mu   sync.Mutex
 	sent []Message
+	fail error // when set, Send fails and keeps nothing
 }
 
 func (o *outbox) Send(_ context.Context, m Message) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if o.fail != nil {
+		return o.fail
+	}
 	o.sent = append(o.sent, m)
 	return nil
 }

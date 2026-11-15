@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"bytes"
 	"context"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 	"google.golang.org/protobuf/proto"
@@ -63,7 +65,14 @@ func (a *Auth) Sweep(ctx context.Context) error {
 			if err := proto.Unmarshal(v, &rec); err != nil {
 				return err
 			}
-			if now-rec.Last >= window && now >= rec.Until {
+			// A send counter keeps its hour (§5.3.5); a throttle counter
+			// goes once it would start again.
+			kind, _, _ := bytes.Cut(k, []byte{0})
+			keep := window
+			if string(kind) == sentUser || string(kind) == sentAddr {
+				keep = int64(time.Hour)
+			}
+			if now-rec.Last >= keep && now >= rec.Until {
 				counters = append(counters, k)
 			}
 			return nil

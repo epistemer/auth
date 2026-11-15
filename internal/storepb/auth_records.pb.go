@@ -1056,7 +1056,9 @@ type Counter struct {
 	Until    int64                  `protobuf:"varint,3,opt,name=until,proto3" json:"until,omitempty"` // the end of the current wait
 	// Bumped by every write, so a success can tell whether another attempt
 	// touched the counter since its own (ADR 0007).
-	Seq           uint64 `protobuf:"varint,4,opt,name=seq,proto3" json:"seq,omitempty"`
+	Seq uint64 `protobuf:"varint,4,opt,name=seq,proto3" json:"seq,omitempty"`
+	// A send counter's sends in the last hour (§5.3.5), oldest first.
+	Sent          []int64 `protobuf:"varint,5,rep,packed,name=sent,proto3" json:"sent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1117,6 +1119,13 @@ func (x *Counter) GetSeq() uint64 {
 		return x.Seq
 	}
 	return 0
+}
+
+func (x *Counter) GetSent() []int64 {
+	if x != nil {
+		return x.Sent
+	}
+	return nil
 }
 
 var File_auth_records_proto protoreflect.FileDescriptor
@@ -1218,12 +1227,13 @@ const file_auth_records_proto_rawDesc = "" +
 	"\tflow_hash\x18\x03 \x01(\fR\bflowHash\x12\x18\n" +
 	"\acreated\x18\x04 \x01(\x03R\acreated\x12\x18\n" +
 	"\aexpires\x18\x05 \x01(\x03R\aexpires\x12\x14\n" +
-	"\x05spent\x18\x06 \x01(\x03R\x05spent\"a\n" +
+	"\x05spent\x18\x06 \x01(\x03R\x05spent\"u\n" +
 	"\aCounter\x12\x1a\n" +
 	"\bfailures\x18\x01 \x01(\rR\bfailures\x12\x12\n" +
 	"\x04last\x18\x02 \x01(\x03R\x04last\x12\x14\n" +
 	"\x05until\x18\x03 \x01(\x03R\x05until\x12\x10\n" +
-	"\x03seq\x18\x04 \x01(\x04R\x03seq*J\n" +
+	"\x03seq\x18\x04 \x01(\x04R\x03seq\x12\x12\n" +
+	"\x04sent\x18\x05 \x03(\x03R\x04sent*J\n" +
 	"\aCarrier\x12\x17\n" +
 	"\x13CARRIER_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eCARRIER_COOKIE\x10\x01\x12\x12\n" +

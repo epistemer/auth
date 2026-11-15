@@ -129,32 +129,38 @@ func passwordAdded(tx *bolt.Tx, id UserID) (int64, error) {
 // password; replacing one is a change, which also ends the user's sessions
 // and makes older password proofs in flows stale.
 func (a *Auth) storePassword(id UserID, phc, rehashOf string) (replaced bool, ended []string, err error) {
-	now := a.now().UnixNano()
 	err = a.db.Update(func(tx *bolt.Tx) error {
-		c := &storepb.Credential{Method: MethodPassword, Added: now}
-		err := store.Get(tx, store.Credentials, passwordKey(id), c)
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-		exists := err == nil
-		if rehashOf != "" {
-			if !exists || string(c.Data) != rehashOf {
-				return nil
-			}
-			c.Data = []byte(phc)
-			return store.Put(tx, store.Credentials, passwordKey(id), c)
-		}
-		c.Data, c.Added = []byte(phc), now
-		if exists {
-			replaced = true
-			var err error
-			if ended, err = a.endSessions(tx, id, ""); err != nil {
-				return err
-			}
-		}
-		return store.Put(tx, store.Credentials, passwordKey(id), c)
+		var err error
+		replaced, ended, err = a.storePasswordTx(tx, id, phc, rehashOf)
+		return err
 	})
 	return replaced, ended, err
+}
+
+// storePasswordTx is storePassword in a transaction of the caller's.
+func (a *Auth) storePasswordTx(tx *bolt.Tx, id UserID, phc, rehashOf string) (replaced bool, ended []string, err error) {
+	now := a.now().UnixNano()
+	c := &storepb.Credential{Method: MethodPassword, Added: now}
+	err = store.Get(tx, store.Credentials, passwordKey(id), c)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return false, nil, err
+	}
+	exists := err == nil
+	if rehashOf != "" {
+		if !exists || string(c.Data) != rehashOf {
+			return false, nil, nil
+		}
+		c.Data = []byte(phc)
+		return false, nil, store.Put(tx, store.Credentials, passwordKey(id), c)
+	}
+	c.Data, c.Added = []byte(phc), now
+	if exists {
+		replaced = true
+		if ended, err = a.endSessions(tx, id, ""); err != nil {
+			return false, nil, err
+		}
+	}
+	return replaced, ended, store.Put(tx, store.Credentials, passwordKey(id), c)
 }
 
 // notify sends a notice to the user's email, or their phone when they have

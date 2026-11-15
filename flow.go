@@ -164,19 +164,11 @@ func (a *Auth) SignIn(ctx context.Context, login string, c Carrier, opts ...Star
 	for _, f := range opts {
 		f(&o)
 	}
-	rec := &storepb.Flow{Purpose: int32(PurposeSignIn), LoginKey: loginKey(login), Carrier: c.c}
-	u, err := a.dir.Find(ctx, login)
-	switch {
-	case err == nil:
-		if err := validID(u.ID); err != nil {
-			return Flow{}, err
-		}
-		rec.UserId = string(u.ID)
-	case errors.Is(err, ErrNoUser):
-		rec.NoUser = true
-	default:
-		return Flow{}, fmt.Errorf("auth: finding a login: %w", err)
+	rec, err := a.resolve(ctx, login, PurposeSignIn)
+	if err != nil {
+		return Flow{}, err
 	}
+	rec.Carrier = c.c
 	return a.start(ctx, rec)
 }
 
@@ -320,6 +312,35 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		v.offers = slices.DeleteFunc(v.offers, func(m string) bool { return proven(func(p string) bool { return p == m }) })
 		v.cannot = !verified && !pol.AllowUnverified && len(seconds) == 0
 		return v, nil
+	case PurposeRecover:
+		// The first proof is a link or a code to an address; then, for a
+		// user with an enrolled factor, that factor: a second message to an
+		// address never counts (§5.1.7).
+		if !proven(func(m string) bool { return slices.Contains(recoverFirst, m) }) {
+			return view{offers: slices.Clone(recoverFirst)}, nil
+		}
+		enrolled, err := a.enrolled(UserID(rec.UserId))
+		if err != nil {
+			return view{}, err
+		}
+		if len(enrolled) == 0 || proven(func(m string) bool { return slices.Contains(enrolled, m) }) {
+			return view{ready: true}, nil
+		}
+		return view{offers: enrolled}, nil
+	case PurposeAccept:
+		// An invitation sets a password, so it is held to the same rule as
+		// a recovery: a user with an enrolled factor must prove it too.
+		if !proven(func(m string) bool { return m == methodInvitation }) {
+			return view{}, nil
+		}
+		enrolled, err := a.enrolled(UserID(rec.UserId))
+		if err != nil {
+			return view{}, err
+		}
+		if len(enrolled) == 0 || proven(func(m string) bool { return slices.Contains(enrolled, m) }) {
+			return view{ready: true}, nil
+		}
+		return view{offers: enrolled}, nil
 	}
 	return view{}, fmt.Errorf("auth: a flow with purpose %d", rec.Purpose)
 }
@@ -581,6 +602,8 @@ func (a *Auth) Finish(ctx context.Context, token string, opts ...FinishOption) (
 		return a.finishSignIn(ctx, hash, rec, o)
 	case PurposeStepUp:
 		return a.finishStepUp(ctx, hash, rec)
+	case PurposeRecover, PurposeAccept:
+		return a.finishPassword(ctx, hash, rec, o)
 	}
 	return Result{}, fmt.Errorf("auth: a flow with purpose %d", rec.Purpose)
 }

@@ -49,7 +49,7 @@ const (
 // codeChannel is the channel a code method sends through.
 func codeChannel(method string) (Channel, bool) {
 	switch method {
-	case MethodEmailCode:
+	case MethodEmailCode, MethodEmailLink:
 		return ChannelEmail, true
 	case MethodSMSCode:
 		return ChannelSMS, true
@@ -71,7 +71,7 @@ func (a *Auth) Challenge(ctx context.Context, token, method string) (Challenge, 
 	if err != nil {
 		return Challenge{}, err
 	}
-	if !slices.Contains(v.offers, method) {
+	if !slices.Contains(v.offers, method) || method == MethodEmailLink && Purpose(rec.Purpose) != PurposeRecover {
 		return Challenge{}, ErrMethodUnavailable
 	}
 	ch, ok := codeChannel(method)
@@ -79,10 +79,14 @@ func (a *Auth) Challenge(ctx context.Context, token, method string) (Challenge, 
 		// A password needs nothing prepared.
 		return Challenge{Method: method}, nil
 	}
-	return a.challengeCode(ctx, hash, rec, method, ch)
+	return a.challengeCode(ctx, token, hash, rec, method, ch)
 }
 
-func (a *Auth) challengeCode(ctx context.Context, hash []byte, rec *storepb.Flow, method string, ch Channel) (Challenge, error) {
+// challengeCode sends a code, or for MethodEmailLink a link, which carries
+// the flow's token sealed so Follow can return the same flow (§5.3.6).
+func (a *Auth) challengeCode(ctx context.Context, token string, hash []byte, rec *storepb.Flow, method string, ch Channel) (Challenge, error) {
+	isLink := method == MethodEmailLink
+	link, linkHash := secrets.NewToken()
 	ev := Event{Kind: "code.not_sent", User: UserID(rec.UserId), Session: SessionID(rec.SessionId), Method: method}
 	before := !a.firstProven(rec)
 	var addr string
@@ -116,6 +120,11 @@ func (a *Auth) challengeCode(ctx context.Context, hash []byte, rec *storepb.Flow
 			return store.ErrNotFound
 		}
 		send = false
+		// A Recover's first proofs stop being offered once one is made; a
+		// Challenge that read the offers before then sends nothing now.
+		if Purpose(cur.Purpose) == PurposeRecover && slices.Contains(recoverFirst, method) && a.firstProven(cur) {
+			return errOffered
+		}
 		i := slices.IndexFunc(cur.Codes, func(c *storepb.CodeState) bool { return c.Method == method })
 		if i >= 0 && now < cur.Codes[i].Sent+int64(a.cfg.AuthCodeResend()) {
 			// Inside code.resend: nothing is sent, and the code stands.
@@ -144,6 +153,29 @@ func (a *Auth) challengeCode(ctx context.Context, hash []byte, rec *storepb.Flow
 			rand.Read(mac)
 		}
 		expires = now + int64(a.cfg.AuthCodeLifetime())
+		if isLink {
+			// A link replaces the last one: the flow names only its own.
+			mac, expires = nil, a.linkExpiry(now)
+			if len(cur.LinkHash) > 0 {
+				if err := store.Delete(tx, store.Links, cur.LinkHash); err != nil {
+					return err
+				}
+			}
+			cur.LinkHash = linkHash
+			if send {
+				sealed, err := secrets.SealWith(secrets.KeyFromToken([]byte(link), "flow"), []byte(token), linkHash)
+				if err != nil {
+					return err
+				}
+				l := &storepb.Link{
+					Purpose: cur.Purpose, UserId: cur.UserId, FlowHash: hash, Created: now, Expires: expires,
+					FlowToken: sealed, Channel: channelKey(addr),
+				}
+				if err := store.Put(tx, store.Links, linkHash, l); err != nil {
+					return err
+				}
+			}
+		}
 		cs := &storepb.CodeState{Method: method, Mac: mac, Channel: channelKey(addr), Sent: now, Expires: expires}
 		if i >= 0 {
 			cur.Codes[i] = cs // a new code cancels the old (§5.3.3)
@@ -155,14 +187,18 @@ func (a *Auth) challengeCode(ctx context.Context, hash []byte, rec *storepb.Flow
 	if errors.Is(err, store.ErrNotFound) {
 		return Challenge{}, ErrFlowExpired
 	}
+	if errors.Is(err, errOffered) {
+		return Challenge{}, ErrMethodUnavailable
+	}
 	if err != nil {
 		return Challenge{}, err
 	}
 	if send {
-		err := a.sender.Send(ctx, Message{
-			Kind: a.codeKind(rec), Channel: ch, To: addr, User: UserID(rec.UserId),
-			Code: code, Expires: time.Unix(0, expires),
-		})
+		m := Message{Kind: a.codeKind(rec), Channel: ch, To: addr, User: UserID(rec.UserId), Code: code, Expires: time.Unix(0, expires)}
+		if isLink {
+			m.Kind, m.Code, m.Token = MsgRecoveryLink, "", link
+		}
+		err := a.sender.Send(ctx, m)
 		if err != nil {
 			ev.Reason = "send_failed"
 			// Nothing went: the send doesn't count toward code.hourly.
@@ -180,6 +216,9 @@ func (a *Auth) challengeCode(ctx context.Context, hash []byte, rec *storepb.Flow
 	}
 	return out, nil
 }
+
+// errOffered is a Challenge for a method the flow stopped offering.
+var errOffered = errors.New("auth: the method is no longer offered")
 
 // codeKind is the message a flow's code goes out as.
 func (a *Auth) codeKind(rec *storepb.Flow) MessageKind {

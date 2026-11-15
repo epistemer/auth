@@ -140,6 +140,11 @@ message Link {
   int64 created = 4;
   int64 expires = 5;
   int64 spent = 6;
+  // The flow's token, sealed under a key derived from the link's own token,
+  // so Follow and Accept return the same flow and the store alone can't.
+  bytes flow_token = 7;
+  // The address the link went to, as Factor.channel.
+  bytes channel = 8;
 }
 
 // Counter is the value of throttle/<kind><key>.

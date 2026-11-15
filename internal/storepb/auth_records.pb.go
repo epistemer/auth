@@ -965,13 +965,18 @@ func (x *Device) GetExpires() int64 {
 // Link is the value of links/<sha256(token)>: a recovery link or an
 // invitation.
 type Link struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Purpose       int32                  `protobuf:"varint,1,opt,name=purpose,proto3" json:"purpose,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	FlowHash      []byte                 `protobuf:"bytes,3,opt,name=flow_hash,json=flowHash,proto3" json:"flow_hash,omitempty"` // Recover: the flow the link belongs to
-	Created       int64                  `protobuf:"varint,4,opt,name=created,proto3" json:"created,omitempty"`
-	Expires       int64                  `protobuf:"varint,5,opt,name=expires,proto3" json:"expires,omitempty"`
-	Spent         int64                  `protobuf:"varint,6,opt,name=spent,proto3" json:"spent,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Purpose  int32                  `protobuf:"varint,1,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	UserId   string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	FlowHash []byte                 `protobuf:"bytes,3,opt,name=flow_hash,json=flowHash,proto3" json:"flow_hash,omitempty"` // Recover: the flow the link belongs to
+	Created  int64                  `protobuf:"varint,4,opt,name=created,proto3" json:"created,omitempty"`
+	Expires  int64                  `protobuf:"varint,5,opt,name=expires,proto3" json:"expires,omitempty"`
+	Spent    int64                  `protobuf:"varint,6,opt,name=spent,proto3" json:"spent,omitempty"`
+	// The flow's token, sealed under a key derived from the link's own token,
+	// so Follow and Accept return the same flow and the store alone can't.
+	FlowToken []byte `protobuf:"bytes,7,opt,name=flow_token,json=flowToken,proto3" json:"flow_token,omitempty"`
+	// The address the link went to, as Factor.channel.
+	Channel       []byte `protobuf:"bytes,8,opt,name=channel,proto3" json:"channel,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1046,6 +1051,20 @@ func (x *Link) GetSpent() int64 {
 		return x.Spent
 	}
 	return 0
+}
+
+func (x *Link) GetFlowToken() []byte {
+	if x != nil {
+		return x.FlowToken
+	}
+	return nil
+}
+
+func (x *Link) GetChannel() []byte {
+	if x != nil {
+		return x.Channel
+	}
+	return nil
 }
 
 // Counter is the value of throttle/<kind><key>.
@@ -1220,14 +1239,17 @@ const file_auth_records_proto_rawDesc = "" +
 	"\x05label\x18\x04 \x01(\tR\x05label\x12\x18\n" +
 	"\acreated\x18\x05 \x01(\x03R\acreated\x12\x12\n" +
 	"\x04used\x18\x06 \x01(\x03R\x04used\x12\x18\n" +
-	"\aexpires\x18\a \x01(\x03R\aexpires\"\xa0\x01\n" +
+	"\aexpires\x18\a \x01(\x03R\aexpires\"\xd9\x01\n" +
 	"\x04Link\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\x05R\apurpose\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
 	"\tflow_hash\x18\x03 \x01(\fR\bflowHash\x12\x18\n" +
 	"\acreated\x18\x04 \x01(\x03R\acreated\x12\x18\n" +
 	"\aexpires\x18\x05 \x01(\x03R\aexpires\x12\x14\n" +
-	"\x05spent\x18\x06 \x01(\x03R\x05spent\"u\n" +
+	"\x05spent\x18\x06 \x01(\x03R\x05spent\x12\x1d\n" +
+	"\n" +
+	"flow_token\x18\a \x01(\fR\tflowToken\x12\x18\n" +
+	"\achannel\x18\b \x01(\fR\achannel\"u\n" +
 	"\aCounter\x12\x1a\n" +
 	"\bfailures\x18\x01 \x01(\rR\bfailures\x12\x12\n" +
 	"\x04last\x18\x02 \x01(\x03R\x04last\x12\x14\n" +

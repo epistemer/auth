@@ -3,6 +3,31 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: sessions and the cookie carrier (M1.5)
+
+- **Landed** (PR #6): `Load` with the cookie carrier, `Require`, `Check`,
+  the levels and `Within`, `SignOut`, `Revoke`, `RevokeUser`, `Sessions`
+  and `Sweep`.
+  - `Load` checks every request without a bearer token with
+    `http.CrossOriginProtection` and `trusted_origins`, a sign-in without a
+    session too; reads the client from `WithClientAddr` or the peer; and
+    writes a session's `Seen` at most once a minute with `Batch`.
+  - `Sweep` removes expired flows, dead sessions with their indexes, and
+    counters past their window.
+  - [Review 0006](reviews/0006-m1.5-sessions.md) by Gemini 4 Argon (High),
+    about 77k tokens: twelve findings, nine accepted and two in part. The
+    two that mattered: a session revoked while `Load` wrote its `Seen` was
+    still admitted, and a request with a bearer header didn't end the
+    cookie session it carried when signing in or out.
+- **Decided:** amendment A8, the behaviour the contract left open (the
+  refusal of a forged request, a bearer header beside a cookie, nested
+  `Load`, unknown levels, `Require(nil)`, `SignOut` on error).
+- **Not done:** `Load(Bearer())` attaches no session until M3.1, when bearer
+  sessions exist; §7's `RevokeUser` test on the bearer carrier moves there.
+  Codes, links, devices and refresh tokens join `Sweep` with their
+  milestones.
+- **Next:** M1.6, events, errors, `auth/authschema` and `auth/authtest`.
+
 ## 2026-11-15: ownership terms
 
 - PR #5 (M1.4) merged on green.

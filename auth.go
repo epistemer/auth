@@ -159,6 +159,7 @@ type Auth struct {
 	sender Sender
 	keys   *secrets.Keys
 	hasher *password.Hasher
+	cop    *http.CrossOriginProtection
 
 	claimer    Claimer
 	recorder   Recorder
@@ -206,7 +207,9 @@ func WithClientAddr(f func(r *http.Request) netip.Addr) Option {
 	return func(a *Auth) { a.clientAddr = f }
 }
 
-// WithReject sets how Require answers a request it refuses.
+// WithReject sets how Require answers a request it refuses, and Load a
+// forged one. Without it the answer is the error's status and its message
+// in the request's locale.
 func WithReject(f func(w http.ResponseWriter, r *http.Request, err error)) Option {
 	return func(a *Auth) { a.reject = f }
 }
@@ -254,8 +257,14 @@ func New(db *bolt.DB, cfg Config, dir Directory, sender Sender, opts ...Option) 
 	if err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
 	}
+	cop := http.NewCrossOriginProtection()
+	for _, o := range cfg.AuthTrustedOrigins() {
+		if err := cop.AddTrustedOrigin(o); err != nil {
+			return nil, fmt.Errorf("auth: trusted_origins: %w", err)
+		}
+	}
 	a := &Auth{
-		db: db, cfg: cfg, dir: dir, sender: sender, keys: keys, hasher: hasher,
+		db: db, cfg: cfg, dir: dir, sender: sender, keys: keys, hasher: hasher, cop: cop,
 		policy:  func(context.Context, User) Policy { return Policy{TrustDevices: true} },
 		first:   []string{MethodPassword},
 		methods: map[string]Method{},

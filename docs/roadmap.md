@@ -72,7 +72,7 @@
 | ☑ | M1.3 | The flow engine: `SignIn`, `StepUp`, `Prove`, `Finish`, `Flow`, with the password method and the rules of §5.1 | §7's enumeration tests for passwords pass; those for codes come with M2.1 |
 | ☑ | M1.4 | Throttling (§5.8), written with `Batch` | §7's throttling tests pass under the race detector |
 | ☑ | M1.5 | Sessions and the cookie carrier: `Load`, `Require`, `Check`, `From`, `SignOut`, `Revoke`, `RevokeUser`, `Sessions`, CSRF (§5.6, §5.9) | §7's session tests pass against `httptest` |
-| ☐ | M1.6 | Events, the errors of §4.6, `auth/authschema` as its own module, `auth/authtest` | A fake config and a generated one both satisfy `auth.Config` |
+| ☑ | M1.6 | Events, the errors of §4.6, `auth/authschema` as its own module, `auth/authtest` | A fake config and a generated one both satisfy `auth.Config` |
 
 ## M2 — Codes
 

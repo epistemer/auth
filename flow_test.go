@@ -675,7 +675,7 @@ func TestRehashKeepsAChangedPassword(t *testing.T) {
 	}
 	changed, _ := k.passwordHash("u1")
 	// The sign-in that verified the old hash finishes its rehash late.
-	if _, err := k.storePassword("u1", "$argon2id$late", old); err != nil {
+	if _, _, err := k.storePassword("u1", "$argon2id$late", old); err != nil {
 		t.Fatal(err)
 	}
 	if cur, _ := k.passwordHash("u1"); cur != changed {

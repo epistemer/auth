@@ -76,11 +76,14 @@ func (a *Auth) SetPassword(ctx context.Context, id UserID, pw string) error {
 	if err != nil {
 		return err
 	}
-	replaced, err := a.storePassword(id, phc, "")
+	replaced, ended, err := a.storePassword(id, phc, "")
 	if err != nil {
 		return err
 	}
 	a.record(ctx, Event{Kind: "password.set", User: id})
+	for _, s := range ended {
+		a.record(ctx, Event{Kind: "session.ended", User: id, Session: SessionID(s), Reason: "password_changed"})
+	}
 	if replaced {
 		a.notify(ctx, u, MsgPasswordChanged)
 	}
@@ -125,7 +128,7 @@ func passwordAdded(tx *bolt.Tx, id UserID) (int64, error) {
 // sign-in does: a password changed meanwhile stays. Without, it sets the
 // password; replacing one is a change, which also ends the user's sessions
 // and makes older password proofs in flows stale.
-func (a *Auth) storePassword(id UserID, phc, rehashOf string) (replaced bool, err error) {
+func (a *Auth) storePassword(id UserID, phc, rehashOf string) (replaced bool, ended []string, err error) {
 	now := a.now().UnixNano()
 	err = a.db.Update(func(tx *bolt.Tx) error {
 		c := &storepb.Credential{Method: MethodPassword, Added: now}
@@ -144,13 +147,14 @@ func (a *Auth) storePassword(id UserID, phc, rehashOf string) (replaced bool, er
 		c.Data, c.Added = []byte(phc), now
 		if exists {
 			replaced = true
-			if _, err := a.endSessions(tx, id, ""); err != nil {
+			var err error
+			if ended, err = a.endSessions(tx, id, ""); err != nil {
 				return err
 			}
 		}
 		return store.Put(tx, store.Credentials, passwordKey(id), c)
 	})
-	return replaced, err
+	return replaced, ended, err
 }
 
 // notify sends a notice to the user's email, or their phone when they have

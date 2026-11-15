@@ -488,7 +488,7 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 	if rehash {
 		// A failure here costs only the upgrade; the next sign-in retries.
 		if phc, err := a.hasher.Hash(ctx, pw); err == nil {
-			_, _ = a.storePassword(u.ID, phc, stored)
+			_, _, _ = a.storePassword(u.ID, phc, stored)
 		}
 	}
 	rec, err = a.addProof(hash, &storepb.Factor{Method: MethodPassword, At: a.now().UnixNano()})
@@ -581,6 +581,7 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		Created: now.UnixNano(), Seen: now.UnixNano(), Expires: now.Add(a.cfg.AuthSessionLifetime()).UnixNano(),
 		Client: clientRecord(clientFrom(ctx)), Claims: claims,
 	}
+	var ended *Session
 	err = a.db.Update(func(tx *bolt.Tx) error {
 		// The flow is spent here, in the transaction that makes the
 		// session: of two concurrent Finishes only one finds it.
@@ -591,9 +592,14 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		sess.Factors = proofs
 		// A sign-in never continues the session the request carries: that
 		// one ends, whoever it belonged to (§5.6.3).
+		ended = nil
 		if cur, ok := carried(ctx); ok {
-			if _, err := a.endSession(tx, string(cur.ID)); err != nil {
+			ok, err := a.endSession(tx, string(cur.ID))
+			if err != nil {
 				return err
+			}
+			if ok {
+				ended = cur
 			}
 		}
 		return putSession(tx, sess)
@@ -605,6 +611,9 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		return Result{}, ErrNotReady
 	case err != nil:
 		return Result{}, err
+	}
+	if ended != nil {
+		a.record(ctx, Event{Kind: "session.ended", User: ended.User, Session: ended.ID, Reason: "signed_in_again"})
 	}
 	a.record(ctx, Event{Kind: "session.created", User: u.ID, Session: SessionID(sess.Id), Reason: verifiedWord(sess.Verified)})
 	return a.result(sess, token), nil

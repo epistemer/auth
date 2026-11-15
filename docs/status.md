@@ -3,6 +3,37 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: authschema, authtest and the acceptance tests (M1.6)
+
+- PR #6 (M1.5) merged on green.
+- **Landed** (PR #7):
+  - `auth/authschema`, a module of its own: the cfgx group `auth` with
+    §4.8's keys, defaults and ranges. A toy shop's generated settings
+    satisfy `auth.Config`, load §4.8's defaults, refuse every range on both
+    sides, and pass `auth.New`.
+  - `auth/authtest` as §4.10 has it, with cheap hashing through an internal
+    hook only auth's module can reach.
+  - `acceptance_test.go`: §7's lines so far, black-box through `authtest`,
+    with a check that no event holds a secret the suite used.
+  - Events: `session.ended` when a password change or a new sign-in ends a
+    session. The errors of §4.6 are pinned, key and kind, by a test.
+  - [Review 0007](reviews/0007-m1.6-authtest.md) by Gemini 4 Argon (High),
+    about 79k tokens: eleven findings, six accepted, three in part. Most were
+    acceptance tests that would have passed with their rule broken.
+- **Decided:** amendment A9 (what the schema can and can't check, the zero
+  `refresh.grace`, concurrency's default, `authtest` outside `go test`).
+- **Recommendations for you (API, not blocking):**
+  1. A validator the generated code can call, so cfgx refuses a short secret
+     when it loads, not only `auth.New`: `authschema.ValidSecret(cfgx.Secret)
+     error`, used with `.Validate` on both secrets. Default: leave it to
+     `New`, as now.
+  2. A way to give a kit a config. `authtest.New(tb, opts...)` takes only
+     `auth.Option`s, so a test can't change `throttle.free` or
+     `trusted_origins` on a kit. I'd add `authtest.NewWith(tb, cfg
+     auth.Config, opts ...auth.Option) *Kit`, used with `authtest.Config`'s
+     edits. Default: leave it out until an app needs it.
+- **Next:** M2.1, codes and links.
+
 ## 2026-11-15: sessions and the cookie carrier (M1.5)
 
 - **Landed** (PR #6): `Load` with the cookie carrier, `Require`, `Check`,

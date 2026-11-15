@@ -13,7 +13,7 @@ require (
 )
 
 require (
-	github.com/epistemer/i18n v0.3.0 // indirect
+	github.com/epistemer/i18n v0.3.1 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 )
 

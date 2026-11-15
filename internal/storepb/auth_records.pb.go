@@ -1050,10 +1050,13 @@ func (x *Link) GetSpent() int64 {
 
 // Counter is the value of throttle/<kind><key>.
 type Counter struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Failures      uint32                 `protobuf:"varint,1,opt,name=failures,proto3" json:"failures,omitempty"`
-	Last          int64                  `protobuf:"varint,2,opt,name=last,proto3" json:"last,omitempty"`   // the last attempt
-	Until         int64                  `protobuf:"varint,3,opt,name=until,proto3" json:"until,omitempty"` // the end of the current wait
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Failures uint32                 `protobuf:"varint,1,opt,name=failures,proto3" json:"failures,omitempty"`
+	Last     int64                  `protobuf:"varint,2,opt,name=last,proto3" json:"last,omitempty"`   // the last attempt
+	Until    int64                  `protobuf:"varint,3,opt,name=until,proto3" json:"until,omitempty"` // the end of the current wait
+	// Bumped by every write, so a success can tell whether another attempt
+	// touched the counter since its own (ADR 0007).
+	Seq           uint64 `protobuf:"varint,4,opt,name=seq,proto3" json:"seq,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1105,6 +1108,13 @@ func (x *Counter) GetLast() int64 {
 func (x *Counter) GetUntil() int64 {
 	if x != nil {
 		return x.Until
+	}
+	return 0
+}
+
+func (x *Counter) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
 	}
 	return 0
 }
@@ -1208,11 +1218,12 @@ const file_auth_records_proto_rawDesc = "" +
 	"\tflow_hash\x18\x03 \x01(\fR\bflowHash\x12\x18\n" +
 	"\acreated\x18\x04 \x01(\x03R\acreated\x12\x18\n" +
 	"\aexpires\x18\x05 \x01(\x03R\aexpires\x12\x14\n" +
-	"\x05spent\x18\x06 \x01(\x03R\x05spent\"O\n" +
+	"\x05spent\x18\x06 \x01(\x03R\x05spent\"a\n" +
 	"\aCounter\x12\x1a\n" +
 	"\bfailures\x18\x01 \x01(\rR\bfailures\x12\x12\n" +
 	"\x04last\x18\x02 \x01(\x03R\x04last\x12\x14\n" +
-	"\x05until\x18\x03 \x01(\x03R\x05until*J\n" +
+	"\x05until\x18\x03 \x01(\x03R\x05until\x12\x10\n" +
+	"\x03seq\x18\x04 \x01(\x04R\x03seq*J\n" +
 	"\aCarrier\x12\x17\n" +
 	"\x13CARRIER_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eCARRIER_COOKIE\x10\x01\x12\x12\n" +

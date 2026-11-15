@@ -147,4 +147,7 @@ message Counter {
   uint32 failures = 1;
   int64 last = 2;  // the last attempt
   int64 until = 3; // the end of the current wait
+  // Bumped by every write, so a success can tell whether another attempt
+  // touched the counter since its own (ADR 0007).
+  uint64 seq = 4;
 }

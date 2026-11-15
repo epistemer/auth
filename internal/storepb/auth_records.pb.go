@@ -520,22 +520,25 @@ func (x *CodeState) GetBurnt() bool {
 
 // Flow is the value of flows/<sha256(token)>.
 type Flow struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Purpose       int32                  `protobuf:"varint,1,opt,name=purpose,proto3" json:"purpose,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`          // empty while the login is unknown
-	LoginKey      []byte                 `protobuf:"bytes,3,opt,name=login_key,json=loginKey,proto3" json:"login_key,omitempty"`    // the throttle key of the login typed
-	SessionId     string                 `protobuf:"bytes,4,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // StepUp and Enroll: the session it is bound to
-	Carrier       Carrier                `protobuf:"varint,5,opt,name=carrier,proto3,enum=auth.store.v1.Carrier" json:"carrier,omitempty"`
-	Created       int64                  `protobuf:"varint,6,opt,name=created,proto3" json:"created,omitempty"`
-	Expires       int64                  `protobuf:"varint,7,opt,name=expires,proto3" json:"expires,omitempty"`
-	Proofs        []*Factor              `protobuf:"bytes,8,rep,name=proofs,proto3" json:"proofs,omitempty"`
-	DeviceId      string                 `protobuf:"bytes,9,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"` // a registered device the request presented
-	Codes         []*CodeState           `protobuf:"bytes,10,rep,name=codes,proto3" json:"codes,omitempty"`
-	LinkHash      []byte                 `protobuf:"bytes,11,opt,name=link_hash,json=linkHash,proto3" json:"link_hash,omitempty"`             // Recover and Accept: the link or invitation
-	EnrollMethod  string                 `protobuf:"bytes,12,opt,name=enroll_method,json=enrollMethod,proto3" json:"enroll_method,omitempty"` // Enroll: the method being added
-	Pending       []byte                 `protobuf:"bytes,13,opt,name=pending,proto3" json:"pending,omitempty"`                               // Enroll: the sealed credential awaiting proof
-	MethodState   map[string][]byte      `protobuf:"bytes,14,rep,name=method_state,json=methodState,proto3" json:"method_state,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	NoUser        bool                   `protobuf:"varint,15,opt,name=no_user,json=noUser,proto3" json:"no_user,omitempty"` // the login didn't resolve; kept to answer alike
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Purpose      int32                  `protobuf:"varint,1,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	UserId       string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`          // empty while the login is unknown
+	LoginKey     []byte                 `protobuf:"bytes,3,opt,name=login_key,json=loginKey,proto3" json:"login_key,omitempty"`    // the throttle key of the login typed
+	SessionId    string                 `protobuf:"bytes,4,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // StepUp and Enroll: the session it is bound to
+	Carrier      Carrier                `protobuf:"varint,5,opt,name=carrier,proto3,enum=auth.store.v1.Carrier" json:"carrier,omitempty"`
+	Created      int64                  `protobuf:"varint,6,opt,name=created,proto3" json:"created,omitempty"`
+	Expires      int64                  `protobuf:"varint,7,opt,name=expires,proto3" json:"expires,omitempty"`
+	Proofs       []*Factor              `protobuf:"bytes,8,rep,name=proofs,proto3" json:"proofs,omitempty"`
+	DeviceId     string                 `protobuf:"bytes,9,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"` // a registered device the request presented
+	Codes        []*CodeState           `protobuf:"bytes,10,rep,name=codes,proto3" json:"codes,omitempty"`
+	LinkHash     []byte                 `protobuf:"bytes,11,opt,name=link_hash,json=linkHash,proto3" json:"link_hash,omitempty"`             // Recover and Accept: the link or invitation
+	EnrollMethod string                 `protobuf:"bytes,12,opt,name=enroll_method,json=enrollMethod,proto3" json:"enroll_method,omitempty"` // Enroll: the method being added
+	Pending      []byte                 `protobuf:"bytes,13,opt,name=pending,proto3" json:"pending,omitempty"`                               // Enroll: the sealed credential awaiting proof
+	MethodState  map[string][]byte      `protobuf:"bytes,14,rep,name=method_state,json=methodState,proto3" json:"method_state,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	NoUser       bool                   `protobuf:"varint,15,opt,name=no_user,json=noUser,proto3" json:"no_user,omitempty"` // the login didn't resolve; kept to answer alike
+	// The SHA-256 of the device token the request presented, so a token
+	// replaced since verifies nothing (review 0010).
+	DeviceToken   []byte `protobuf:"bytes,16,opt,name=device_token,json=deviceToken,proto3" json:"device_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -673,6 +676,13 @@ func (x *Flow) GetNoUser() bool {
 		return x.NoUser
 	}
 	return false
+}
+
+func (x *Flow) GetDeviceToken() []byte {
+	if x != nil {
+		return x.DeviceToken
+	}
+	return nil
 }
 
 // Credential is the value of credentials/<user>\x00<method>\x00sha256(key).
@@ -1195,7 +1205,7 @@ const file_auth_records_proto_rawDesc = "" +
 	"\x04sent\x18\x04 \x01(\x03R\x04sent\x12\x18\n" +
 	"\aexpires\x18\x05 \x01(\x03R\aexpires\x12\x14\n" +
 	"\x05tries\x18\x06 \x01(\rR\x05tries\x12\x14\n" +
-	"\x05burnt\x18\a \x01(\bR\x05burnt\"\xd5\x04\n" +
+	"\x05burnt\x18\a \x01(\bR\x05burnt\"\xf8\x04\n" +
 	"\x04Flow\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\x05R\apurpose\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
@@ -1213,7 +1223,8 @@ const file_auth_records_proto_rawDesc = "" +
 	"\renroll_method\x18\f \x01(\tR\fenrollMethod\x12\x18\n" +
 	"\apending\x18\r \x01(\fR\apending\x12G\n" +
 	"\fmethod_state\x18\x0e \x03(\v2$.auth.store.v1.Flow.MethodStateEntryR\vmethodState\x12\x17\n" +
-	"\ano_user\x18\x0f \x01(\bR\x06noUser\x1a>\n" +
+	"\ano_user\x18\x0f \x01(\bR\x06noUser\x12!\n" +
+	"\fdevice_token\x18\x10 \x01(\fR\vdeviceToken\x1a>\n" +
 	"\x10MethodStateEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x8a\x01\n" +

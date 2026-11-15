@@ -359,7 +359,11 @@ func newCode(n int) (string, error) {
 // first success (§5.3.4).
 func (a *Auth) proveCode(ctx context.Context, token string, hash []byte, rec *storepb.Flow, v view, method, code string) (Flow, error) {
 	before := a.flowOut(token, rec, v)
-	at, err := a.count(subjectOf(ctx, rec))
+	sub, err := a.subjectFor(ctx, rec)
+	if err != nil {
+		return before, err
+	}
+	at, err := a.count(sub)
 	if err != nil {
 		if errors.Is(err, ErrTooManyAttempts) {
 			a.record(ctx, Event{Kind: "proof.refused", User: UserID(rec.UserId), Session: SessionID(rec.SessionId), Method: method, Reason: "throttled"})

@@ -138,29 +138,40 @@ func RetryAfter(err error) (time.Duration, bool) {
 	return 0, false
 }
 
-// count adds an attempt by s to its counters and, in the same transaction,
-// refuses it if any counter is in a wait (§5.8.3). A refused attempt is
-// counted too, so a wait grows while someone keeps trying. It returns
-// ErrTooManyAttempts, wrapping the wait, or the attempt to pass to succeed.
+// count decides, in one transaction, whether an attempt by s may go on
+// (§5.8.3, amendment A7). If any counter is in a wait it is refused and
+// changes nothing: a refusal costs no hash and gives no guess, so it isn't
+// a failure, and counting it would let an address already in a wait push
+// other counters further. Otherwise it is added to every counter before
+// its proof is checked, so concurrent attempts are ordered and can't all
+// find the counters empty. It returns ErrTooManyAttempts, wrapping the
+// longest wait, or the attempt to pass to succeed.
 func (a *Auth) count(s subject) (*attempt, error) {
 	cs := s.counters()
 	var at *attempt
-	var refused bool
-	var until int64
+	var wait int64
 	// Batch may run this more than once: it depends only on what it reads.
 	err := a.db.Batch(func(tx *bolt.Tx) error {
 		now := a.now().UnixNano()
-		at, refused, until = &attempt{subject: s, counters: cs}, false, 0
-		for _, c := range cs {
+		at, wait = &attempt{subject: s, counters: cs}, 0
+		recs := make([]*storepb.Counter, len(cs))
+		for i, c := range cs {
 			rec := new(storepb.Counter)
 			if err := store.Get(tx, store.Throttle, c.key, rec); err != nil && !errors.Is(err, store.ErrNotFound) {
 				return err
 			}
 			a.expire(rec, now)
-			before := &storepb.Counter{Failures: rec.Failures, Last: rec.Last, Until: rec.Until, Seq: rec.Seq}
 			if rec.Until > now {
-				refused = true
+				wait = max(wait, rec.Until-now)
 			}
+			recs[i] = rec
+		}
+		if wait > 0 {
+			return nil
+		}
+		for i, c := range cs {
+			rec := recs[i]
+			before := &storepb.Counter{Failures: rec.Failures, Last: rec.Last, Until: rec.Until, Seq: rec.Seq}
 			if rec.Failures < 1<<31 {
 				rec.Failures++
 			}
@@ -174,18 +185,14 @@ func (a *Auth) count(s subject) (*attempt, error) {
 			}
 			at.before = append(at.before, before)
 			at.after = append(at.after, rec)
-			until = max(until, rec.Until)
-		}
-		if refused {
-			until -= now
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("auth: throttle: %w", err)
 	}
-	if refused {
-		return nil, ErrTooManyAttempts.Wrap(waitError{time.Duration(until)})
+	if wait > 0 {
+		return nil, ErrTooManyAttempts.Wrap(waitError{time.Duration(wait)})
 	}
 	return at, nil
 }

@@ -741,9 +741,12 @@ func Config(edit ...func(*Values)) auth.Config // the defaults, with cheap passw
 2. After `throttle.free` failures, each further failure doubles a wait that
    starts at one second and stops at `throttle.ceiling`.
 3. **An attempt is counted before it is checked.** One write transaction
-   adds one to each counter and refuses the attempt if any is in a wait.
-   Only then is the proof verified. Concurrent attempts therefore can't all
-   read "no failures yet": the transaction orders them.
+   refuses the attempt if any counter is in a wait, and otherwise adds one
+   to each. Only then is the proof verified. Concurrent attempts therefore
+   can't all read "no failures yet": the transaction orders them. A
+   refused attempt changes no counter: it costs no hash and is no guess,
+   and counting it would let an address already in a wait push other
+   users' counters (A7).
 4. A refused attempt returns `ErrTooManyAttempts` and does no hashing.
 5. A success clears the pair's counter and the user's. A counter with no
    attempt for `throttle.window` starts again from zero; the address's
@@ -935,11 +938,13 @@ milestone that makes it possible.
 
 **Throttling**
 - The sixth wrong password returns `ErrTooManyAttempts` without hashing, and
-  `RetryAfter` doubles with each further failure up to the ceiling.
+  `RetryAfter` doubles with each further failure let through, up to the
+  ceiling; refused attempts don't lengthen it (A7).
 - A wait on one login from one address doesn't block that login from
   another address until the login's own counter is reached.
-- A thousand concurrent failures lose no count, and no more than
-  `throttle.free` of them reach the hash (race detector on).
+- Of a thousand concurrent failures, no more than `throttle.free` reach the
+  hash, each of them is counted, and the refused ones change nothing (race
+  detector on, A7).
 - `Alice`, `alice` and ` alice ` share one counter.
 - A counter with no attempt for `throttle.window` starts again.
 - During a wait on a user, a request with that user's registered device
@@ -1047,3 +1052,4 @@ Changes Claude made under the ownership terms, or on epistemer's choice where th
 | A4 | 2026-11-14 | §4.8 | `password.memory` and `password.time` get upper bounds, 4096 MiB and 64 passes: the bounds a stored hash is read with, so a damaged record can't ask for more. Without them a config past the bound made hashes nothing could verify (review 0003) |
 | A5 | 2026-11-15 | §5.7.3, §5.1.12 | For a `StepUp`, `Ready` is true once the flow holds a proof and the session would be verified, or the policy has `AllowUnverified` (the step-up then only refreshes the proof `Within` reads). Its `Offers` are the user's own methods, the password included, less those it proved. `Finish` from another session is `ErrFlowExpired`, from none `ErrNoSession` |
 | A6 | 2026-11-15 | §5.8 | How the counters count ([ADR 0007](adr/0007-throttle-counters.md)). The address's counter counts failures: a success takes back its own attempt's count and never clears the counter. An IPv6 address is counted by its /64, and an IPv4 address mapped into IPv6 as itself. A counter in a wait doesn't decay before the wait ends |
+| A7 | 2026-11-15 | §5.8.3, §7 | On epistemer's choice: a refused attempt changes no counter. Counting it let an address already in a wait push any user's counter to the ceiling without hashing, and lengthened everyone's wait on a shared address; it bought nothing against a guesser, whose every guess is still counted before it is checked (review 0005, finding 2). The wait now doubles with each failure let through |

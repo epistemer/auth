@@ -60,8 +60,9 @@ func userSubject(id UserID, addr string) subject {
 	return subjectOf(WithClient(context.Background(), Client{Addr: netip.MustParseAddr(addr)}), &storepb.Flow{UserId: string(id)})
 }
 
-// §7, throttling: the sixth wrong password returns ErrTooManyAttempts
-// without hashing, and RetryAfter doubles with each further failure up to
+// §7, throttling (amendment A7): the sixth wrong password returns
+// ErrTooManyAttempts without hashing; refused attempts don't lengthen the
+// wait; RetryAfter doubles with each further failure let through, up to
 // the ceiling. A known and an unknown login answer alike.
 func TestThrottleSixth(t *testing.T) {
 	k := newKit(t, WithPolicy(allowUnverified))
@@ -76,17 +77,28 @@ func TestThrottleSixth(t *testing.T) {
 				t.Fatalf("%s, failure %d: %v, %d hashes", login, i, err, hashes)
 			}
 		}
-		for n := 6; n <= 20; n++ {
+		for range 10 {
 			hashes, err := k.try(t, ctx, login, goodPassword)
 			if !errors.Is(err, ErrTooManyAttempts) || hashes != 0 {
-				t.Fatalf("%s, attempt %d: %v, %d hashes", login, n, err, hashes)
+				t.Fatalf("%s, the sixth: %v, %d hashes", login, err, hashes)
 			}
-			want := min(time.Second<<(n-5), 15*time.Minute)
-			if d, ok := RetryAfter(err); !ok || d != want {
-				t.Errorf("%s, attempt %d: RetryAfter = %v, %v; want %v", login, n, d, ok, want)
+			if d, ok := RetryAfter(err); !ok || d != time.Second {
+				t.Fatalf("%s, a refused attempt: RetryAfter = %v, %v; want 1s, unchanged", login, d, ok)
 			}
 			if errors.KindOf(err) != errors.RateLimited {
 				t.Errorf("kind %v", errors.KindOf(err))
+			}
+		}
+		wait := time.Second
+		for n := 6; n <= 20; n++ {
+			k.clock.advance(wait)
+			if hashes, err := k.try(t, ctx, login, wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
+				t.Fatalf("%s, failure %d after the wait: %v, %d hashes", login, n, err, hashes)
+			}
+			_, err := k.try(t, ctx, login, goodPassword)
+			wait = min(time.Second<<(n-5), 15*time.Minute)
+			if d, ok := RetryAfter(err); !ok || d != wait {
+				t.Fatalf("%s, after failure %d: RetryAfter = %v, %v; want %v", login, n, d, ok, wait)
 			}
 		}
 	}
@@ -111,17 +123,20 @@ func TestThrottleOtherAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// a is in a wait; sara isn't, from b. The refused try counts against
-	// sara too.
+	// a is in a wait; sara isn't, from b. The refused try from a doesn't
+	// count against sara (amendment A7).
 	if _, err := k.try(t, a, "sara", goodPassword); !errors.Is(err, ErrTooManyAttempts) {
 		t.Fatalf("from the waiting address: %v", err)
 	}
 	if hashes, err := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) || hashes != 1 {
 		t.Fatalf("from another address: %v, %d hashes", err, hashes)
 	}
-	// Three more failures from b make five against sara: then no address
+	if c := k.counterOf(t, userSubject("u1", "192.0.2.1"), counterUser); c == nil || c.Failures != 1 {
+		t.Fatalf("sara's counter %v; want the one failure from b", c)
+	}
+	// Four more failures from b make five against sara: then no address
 	// gets through.
-	for range 3 {
+	for range 4 {
 		if _, err := k.try(t, b, "sara", wrongPassword); !errors.Is(err, ErrBadCredentials) {
 			t.Fatal(err)
 		}
@@ -131,8 +146,9 @@ func TestThrottleOtherAddress(t *testing.T) {
 	}
 }
 
-// §7, throttling: a thousand concurrent failures lose no count, and no more
-// than throttle.free of them reach the hash.
+// §7, throttling (amendment A7): of a thousand concurrent failures, no
+// more than throttle.free reach the hash; each of those is counted, and the
+// refused ones change nothing.
 func TestThrottleConcurrent(t *testing.T) {
 	k := newKit(t, WithPolicy(allowUnverified))
 	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
@@ -168,7 +184,7 @@ func TestThrottleConcurrent(t *testing.T) {
 	}
 	s := userSubject("u1", "192.0.2.1")
 	for _, kind := range []string{counterUser, counterAddr, counterPair} {
-		if c := k.counterOf(t, s, kind); c == nil || c.Failures != 1000 {
+		if c := k.counterOf(t, s, kind); c == nil || c.Failures != 5 || c.Until != k.clock.now().Add(time.Second).UnixNano() {
 			t.Errorf("%s counter %v", kind, c)
 		}
 	}
@@ -222,7 +238,7 @@ func TestThrottleWindow(t *testing.T) {
 	k.clock.advance(time.Second)
 	fail(1)
 	_, err := k.try(t, ctx, "sara", wrongPassword)
-	if d, _ := RetryAfter(err); d != 4*time.Second {
+	if d, _ := RetryAfter(err); d != 2*time.Second {
 		t.Fatalf("after a sixth failure: %v, %v", err, d)
 	}
 	k.clock.advance(time.Hour)
@@ -573,5 +589,61 @@ func TestThrottleStepUp(t *testing.T) {
 	n := k.hasher.Count()
 	if _, err := k.Prove(ctx, up.Token, Password(goodPassword)); !errors.Is(err, ErrTooManyAttempts) || k.hasher.Count() != n {
 		t.Errorf("sixth step-up proof: %v", err)
+	}
+}
+
+// Amendment A7: an address in a wait can't push anyone else's counters.
+// Its refused attempts against a user leave that user's counter as it was.
+func TestRefusedChangesNothing(t *testing.T) {
+	k := newKit(t, WithPolicy(allowUnverified))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword)
+	bad := k.from("192.0.2.1")
+	for _, login := range []string{"one", "two", "three", "four", "five"} {
+		if _, err := k.try(t, bad, login, wrongPassword); !errors.Is(err, ErrBadCredentials) {
+			t.Fatal(err)
+		}
+	}
+	addr := k.counterOf(t, userSubject("u1", "192.0.2.1"), counterAddr)
+	for range 50 {
+		if hashes, err := k.try(t, bad, "sara", wrongPassword); !errors.Is(err, ErrTooManyAttempts) || hashes != 0 {
+			t.Fatalf("from the waiting address: %v, %d hashes", err, hashes)
+		}
+	}
+	s := userSubject("u1", "192.0.2.1")
+	if c := k.counterOf(t, s, counterUser); c != nil {
+		t.Errorf("sara's counter %v after refusals only", c)
+	}
+	if c := k.counterOf(t, s, counterPair); c != nil {
+		t.Errorf("the pair's counter %v after refusals only", c)
+	}
+	if c := k.counterOf(t, s, counterAddr); c.Failures != addr.Failures || c.Until != addr.Until || c.Seq != addr.Seq {
+		t.Errorf("the address's counter went from %v to %v", addr, c)
+	}
+	if _, err := k.try(t, k.from("198.51.100.7"), "sara", goodPassword); err != nil {
+		t.Errorf("sara from elsewhere: %v", err)
+	}
+}
+
+// RetryAfter is the longest wait among the counters that refused.
+func TestRetryAfterLongest(t *testing.T) {
+	k := newKit(t)
+	s := userSubject("u1", "192.0.2.1")
+	now := k.clock.now()
+	waits := map[string]time.Duration{counterUser: 3 * time.Second, counterAddr: 10 * time.Second, counterPair: 5 * time.Second}
+	err := k.db.Update(func(tx *bolt.Tx) error {
+		for _, c := range s.counters() {
+			rec := &storepb.Counter{Failures: 9, Last: now.UnixNano(), Until: now.Add(waits[c.kind]).UnixNano(), Seq: 1}
+			if err := store.Put(tx, store.Throttle, c.key, rec); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = k.count(s)
+	if d, ok := RetryAfter(err); !ok || d != 10*time.Second {
+		t.Errorf("RetryAfter = %v, %v; want 10s", d, ok)
 	}
 }

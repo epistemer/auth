@@ -13,7 +13,7 @@ taken for you, what's next, and what's waiting on you.
     `ErrTooManyAttempts`; `RetryAfter` says how long.
   - How the counters count is [ADR 0007](adr/0007-throttle-counters.md).
   - [Review 0005](reviews/0005-m1.4-throttle.md) by Gemini 4 Argon (High),
-    about 83k tokens: ten findings, six accepted and two in part. The one
+    about 83k tokens: ten findings, seven accepted and two in part. The one
     that mattered: the doubling overflowed after about 39 failures, and the
     negative wait let a few guesses through in a row.
 - **Decided for you:** amendment A6.
@@ -27,16 +27,10 @@ taken for you, what's next, and what's waiting on you.
 - **Not done:** §7's throttling test for a registered device waits for
   devices; the roadmap adds it to M2.3. `Sweep`, which removes old
   counters, comes with M1.5.
-- **Waiting on you:** whether a refused attempt should count (review 0005,
-  finding 2). §5.8.3 counts it against every counter. So an address
-  already in a wait can still push any user's counter to the ceiling
-  without hashing anything, and every refusal lengthens the waits of
-  everyone sharing that address. Not counting refused attempts gives a
-  guesser no more guesses: each guess is still counted before it is
-  checked, and a patient guesser already waits each wait out. It would
-  change §5.8.3's wording and §7's first throttling test (the wait would
-  double with each failure that is let through). My recommendation, and
-  the default: don't count refused attempts.
+- **Your choice:** a refused attempt changes no counter (amendment A7,
+  review 0005 finding 2). An address in a wait can no longer push other
+  users' counters, and the wait doubles with each failure let through.
+- **Waiting on you:** nothing.
 - **Next:** M1.5, sessions and the cookie carrier.
 
 ## 2026-11-15: the flow engine (M1.3)

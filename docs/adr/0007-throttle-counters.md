@@ -18,19 +18,19 @@ Writing the code raised questions that the rules didn't settle.
 
 ## Decisions
 
-1. **One transaction counts and decides.** `count` reads each counter,
-   notes whether a wait is in force, adds one, sets `last`, sets the wait for
-   the new count and writes, all in one `Batch`. The attempt is refused if
-   any counter was in a wait. A refused attempt is counted too, as §5.8.3
-   says, so a wait grows while someone keeps trying, up to the ceiling.
-   `RetryAfter` gives the longest wait among the counters after this
-   attempt.
+1. **One transaction decides and counts.** `count` reads each counter and
+   decays it, all in one `Batch`. If any is in a wait, the attempt is
+   refused and nothing is written; `RetryAfter` gives the longest wait.
+   Otherwise each counter gains one, `last` and the wait for the new count
+   are set, and the counters are written before the proof is checked
+   (amendment A7, on epistemer's choice; the first draft counted refused
+   attempts too, as §5.8.3 then said).
 2. **The wait.** After `n` failures it is none while `n < throttle.free`,
    then `1s << (n - free)`, capped at `throttle.ceiling`; past 30 doublings
    it is the ceiling, before the shift could overflow (review 0005). With the default
    five, the fifth failure starts a one-second wait, so the sixth attempt
-   is refused, and each refused attempt doubles the wait. A wait is never
-   shortened by a later write.
+   is refused; the next failure let through, once the wait is over, doubles
+   it. A wait is never shortened by a later failure.
 3. **What success does to the address.** The address's counter counts
    failures (§5.8.2), but an attempt is counted before anyone knows it will
    fail. So a success takes back its own count. If no other attempt touched
@@ -76,13 +76,12 @@ Writing the code raised questions that the rules didn't settle.
   getting extra tries by using another login. Doing both would need one key
   for logins that resolve and one for those that don't, and that brings back
   the extra tries.
-- Refused attempts are counted against every counter, as §5.8.3 says. An
-  address that many people share (an office, a mobile carrier's NAT) is
-  slowed by everyone's failures and refusals: under the default settings,
-  fifteen of them within the hour make everyone there wait up to the
-  ceiling. Worse, an address already in a wait can push any user's counter
-  to the ceiling without a single hash (review 0005, finding 2). Changing
-  the rule would loosen it, so it went to epistemer: the status log of
-  2026-11-15.
+- A refused attempt changes nothing, so an address in a wait can't push
+  any other counter, and hammering during a wait doesn't lengthen it. A
+  guesser gains nothing from that: every guess is counted before it is
+  checked, and a patient one waits each wait out either way. An address
+  that many people share (an office, a mobile carrier's NAT) is still
+  slowed by everyone's failures: under the default settings, fifteen
+  failures within the hour make everyone there wait up to the ceiling.
 - A crash between `count` and the check leaves the attempt counted as a
   failure. That is the strict side.

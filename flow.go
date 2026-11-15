@@ -436,6 +436,15 @@ func (a *Auth) Prove(ctx context.Context, token string, p Proof) (Flow, error) {
 // password (§5.1.4).
 func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec *storepb.Flow, v view, pw string) (Flow, error) {
 	before := a.flowOut(token, rec, v)
+	// Counted before it is checked; a refused attempt does no hashing
+	// (§5.8.3, §5.8.4).
+	at, err := a.count(subjectOf(ctx, rec))
+	if err != nil {
+		if errors.Is(err, ErrTooManyAttempts) {
+			a.record(ctx, Event{Kind: "proof.refused", User: UserID(rec.UserId), Session: SessionID(rec.SessionId), Method: MethodPassword, Reason: "throttled"})
+		}
+		return before, err
+	}
 	var stored string
 	if !rec.NoUser {
 		var err error
@@ -470,6 +479,11 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 	if u.Disabled {
 		a.record(ctx, Event{Kind: "proof.refused", User: u.ID, Session: SessionID(rec.SessionId), Method: MethodPassword, Reason: "disabled"})
 		return before, ErrUserDisabled
+	}
+	// Only a proof that is accepted clears counters; a disabled user's
+	// right password stays counted, the strict side.
+	if err := a.succeed(at); err != nil {
+		return before, err
 	}
 	if rehash {
 		// A failure here costs only the upgrade; the next sign-in retries.

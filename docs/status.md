@@ -3,6 +3,42 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: throttling (M1.4)
+
+- **Landed** (PR #5): throttling (interface §5.8), with i18n bumped to
+  v0.3.1, whose protobuf file no longer clashes with anyone's.
+  - Every password proof, in `SignIn` and `StepUp`, is counted against the
+    user, the client address and the pair in one `Batch` transaction
+    before it is checked. A refused attempt does no hashing and returns
+    `ErrTooManyAttempts`; `RetryAfter` says how long.
+  - How the counters count is [ADR 0007](adr/0007-throttle-counters.md).
+  - [Review 0005](reviews/0005-m1.4-throttle.md) by Gemini 4 Argon (High),
+    about 83k tokens: ten findings, six accepted and two in part. The one
+    that mattered: the doubling overflowed after about 39 failures, and the
+    negative wait let a few guesses through in a row.
+- **Decided for you:** amendment A6.
+  - The address's counter counts failures: a success takes back its own
+    attempt's count, and never clears the counter. Read literally, §5.8
+    counted successes too, so an office would wait after five sign-ins.
+  - An IPv6 address is counted by its /64.
+  - A counter in a wait doesn't decay before the wait ends.
+  - Only an accepted proof clears counters: a disabled user's right
+    password stays counted.
+- **Not done:** §7's throttling test for a registered device waits for
+  devices; the roadmap adds it to M2.3. `Sweep`, which removes old
+  counters, comes with M1.5.
+- **Waiting on you:** whether a refused attempt should count (review 0005,
+  finding 2). §5.8.3 counts it against every counter. So an address
+  already in a wait can still push any user's counter to the ceiling
+  without hashing anything, and every refusal lengthens the waits of
+  everyone sharing that address. Not counting refused attempts gives a
+  guesser no more guesses: each guess is still counted before it is
+  checked, and a patient guesser already waits each wait out. It would
+  change §5.8.3's wording and §7's first throttling test (the wait would
+  double with each failure that is let through). My recommendation, and
+  the default: don't count refused attempts.
+- **Next:** M1.5, sessions and the cookie carrier.
+
 ## 2026-11-15: the flow engine (M1.3)
 
 - **Landed** (PR #4): the root package.

@@ -256,6 +256,20 @@ func TestNewRefusesBadConfig(t *testing.T) {
 	if _, err := New(db, defaults(), &directory{}, &outbox{}, WithFirst("telepathy")); err == nil {
 		t.Error("an unknown first method was accepted")
 	}
+	// A module's method is refused until the engine drives modules (v0.2.0).
+	if _, err := New(db, defaults(), &directory{}, &outbox{}, WithMethods(stubMethod{})); err == nil {
+		t.Error("a module's method was accepted")
+	}
+}
+
+type stubMethod struct{}
+
+func (stubMethod) Name() string { return "stub" }
+func (stubMethod) Start(context.Context, MethodInput) (any, []byte, error) {
+	return nil, nil, nil
+}
+func (stubMethod) Verify(context.Context, MethodInput, []byte, Proof) (MethodResult, error) {
+	return MethodResult{}, nil
 }
 
 // §7, enumeration: a wrong password answers alike for a known and an

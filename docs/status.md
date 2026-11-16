@@ -3,6 +3,35 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: docs, examples and the API review (M6.2)
+
+- **Landed** (this PR):
+  - [docs/api-review.md](api-review.md): every exported identifier of the
+    four packages against interface §4, with the test that pins it. The
+    API is §4's, with two exceptions, both fixed here:
+    - **`DeleteUser` was missing.** §4.5 declares it but no milestone named
+      it. It now removes everything auth holds for a user in one
+      transaction (A19). The app removes or disables the user in its
+      directory first.
+    - **`WithMethods` took modules the engine never drives.** `New` refuses
+      them until v0.2.0 (A19), so no flow offers a method it can't prove.
+  - Runnable godoc examples: signing in, `Require`, a step-up through
+    handlers, recovery, and `auth/access`.
+  - README with a quickstart, CHANGELOG (Unreleased until M6.4 tags
+    v0.1.0), and a package doc that describes the package as built.
+  - [Review 0018](reviews/0018-m6.2-docs.md) by Gemini 4 Argon (High),
+    about 86k tokens, and a check of the fixes by Argon (Medium), about
+    190k: seven findings, six accepted and one in part, plus one from the
+    re-check. The one that mattered: `DeleteUser`'s doc allowed the
+    directory to keep the user afterwards, which let a recovery started in
+    between set a password again.
+- **Decided:** amendment A19.
+- **For you (API, not blocking):** nothing new. The earlier notes stand:
+  `authschema.ValidSecret`, `authtest.NewWith`, and `access.New(db,
+  opts...)` with `WithRecorder`.
+- **Next:** M6.3, a security review of the whole package by Gemini at its
+  highest effort.
+
 ## 2026-11-16: the example shop (M6.1)
 
 - **Landed** (this PR): `examples/shop`, a module of its own, which CI

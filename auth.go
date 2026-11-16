@@ -192,7 +192,9 @@ func WithFirst(methods ...string) Option {
 	return func(a *Auth) { a.first = append([]string(nil), methods...) }
 }
 
-// WithMethods adds methods from modules.
+// WithMethods adds methods from modules. The engine drives them from
+// v0.2.0, with auth/passkey; until then New refuses any, so that no flow
+// offers a method it can't prove.
 func WithMethods(ms ...Method) Option {
 	return func(a *Auth) {
 		for _, m := range ms {
@@ -272,6 +274,9 @@ func New(db *bolt.DB, cfg Config, dir Directory, sender Sender, opts ...Option) 
 	}
 	for _, o := range opts {
 		o(a)
+	}
+	if len(a.methods) > 0 {
+		return nil, errors.New("auth: methods from modules aren't driven before v0.2.0")
 	}
 	if len(a.first) == 0 {
 		return nil, errors.New("auth: WithFirst names no method")

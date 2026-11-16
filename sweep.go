@@ -24,7 +24,7 @@ func (a *Auth) Sweep(ctx context.Context) error {
 			return err
 		}
 		now := a.now().UnixNano()
-		var flows, sessions, counters, links [][]byte
+		var flows, counters, links [][]byte
 		var devices []*storepb.Device
 		err := store.Scan(tx, store.Flows, nil, func(k, v []byte) error {
 			var rec storepb.Flow
@@ -93,6 +93,7 @@ func (a *Auth) Sweep(ctx context.Context) error {
 			}
 		}
 		var dead []*storepb.Session
+		var deadKeys [][]byte
 		err = store.Scan(tx, store.Sessions, nil, func(k, v []byte) error {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -102,8 +103,7 @@ func (a *Auth) Sweep(ctx context.Context) error {
 				return err
 			}
 			if !a.live(rec) {
-				sessions = append(sessions, k)
-				dead = append(dead, rec)
+				dead, deadKeys = append(dead, rec), append(deadKeys, k)
 			}
 			return nil
 		})
@@ -139,22 +139,8 @@ func (a *Auth) Sweep(ctx context.Context) error {
 				return err
 			}
 		}
-		for i, k := range sessions {
-			s := dead[i]
-			// The token index points here only if no newer session took
-			// the hash, which 256 random bits rule out; check anyway.
-			if string(store.B(tx, store.SessionTokens).Get(s.TokenHash)) == s.Id {
-				if err := store.Delete(tx, store.SessionTokens, s.TokenHash); err != nil {
-					return err
-				}
-			}
-			if err := store.Delete(tx, store.SessionsByUser, store.Key([]byte(s.UserId), []byte(s.Id))); err != nil {
-				return err
-			}
-			if err := endRefresh(tx, s.Id); err != nil {
-				return err
-			}
-			if err := store.Delete(tx, store.Sessions, k); err != nil {
+		for i, s := range dead {
+			if err := deleteSession(tx, deadKeys[i], s); err != nil {
 				return err
 			}
 		}

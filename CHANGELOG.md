@@ -4,10 +4,10 @@ All notable changes to this module and its nested modules (`authschema`).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v0.1.0] - 2026-11-16
 
 The first release: the whole of the interface locked on 2026-11-14, with
-amendments A1–A19 ([docs/interface.md](docs/interface.md) §10).
+amendments A1–A20 ([docs/interface.md](docs/interface.md) §10).
 
 ### Added
 
@@ -37,4 +37,4 @@ amendments A1–A19 ([docs/interface.md](docs/interface.md) §10).
 - `authschema`: the cfgx group `auth`, with every key's range.
 - `examples/shop`: a toy shop with web and API sign-in.
 
-[Unreleased]: https://github.com/epistemer/auth/commits/main
+[v0.1.0]: https://github.com/epistemer/auth/releases/tag/v0.1.0

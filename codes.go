@@ -74,9 +74,13 @@ func (a *Auth) Challenge(ctx context.Context, token, method string) (Challenge, 
 	if !slices.Contains(v.offers, method) || method == MethodEmailLink && Purpose(rec.Purpose) != PurposeRecover {
 		return Challenge{}, ErrMethodUnavailable
 	}
+	if method == MethodTOTP && Purpose(rec.Purpose) == PurposeEnroll && rec.EnrollMethod == MethodTOTP {
+		return a.challengeTOTP(ctx, hash, rec)
+	}
 	ch, ok := codeChannel(method)
 	if !ok {
-		// A password needs nothing prepared.
+		// A password, or an authenticator app's code, needs nothing
+		// prepared.
 		return Challenge{Method: method}, nil
 	}
 	return a.challengeCode(ctx, token, hash, rec, method, ch)

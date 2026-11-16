@@ -94,7 +94,7 @@
 | ✓ | ID | Item | Done when |
 |---|----|------|-----------|
 | ☑ | M4.1 | `Enroll`, `Factors`, `RemoveFactor`, `ResetFactors`, changing a password through `Enroll` | A factor change without a fresh proof is refused |
-| ☐ | M4.2 | TOTP (§5.4) | The RFC 6238 vectors pass; a code is refused the second time |
+| ☑ | M4.2 | TOTP (§5.4) | The RFC 6238 vectors pass; a code is refused the second time |
 | ☐ | M4.3 | Recovery codes | Each works once; a new set cancels the old |
 
 ## M5 — Access

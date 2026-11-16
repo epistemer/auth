@@ -284,6 +284,11 @@ func New(db *bolt.DB, cfg Config, dir Directory, sender Sender, opts ...Option) 
 	if err := store.Init(db); err != nil {
 		return nil, fmt.Errorf("auth: %w", err)
 	}
+	stale, lost, err := a.staleSecrets()
+	if err != nil {
+		return nil, fmt.Errorf("auth: %w", err)
+	}
+	logStale(stale, lost)
 	if cfg.AuthCookieInsecure() {
 		slog.Warn("auth: cookie.insecure is set: cookies lose Secure and their __Host- prefix; for development only")
 	}

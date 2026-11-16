@@ -3,6 +3,29 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: links, recovery and invitations (M2.2)
+
+- PR #8 (M2.1) merged on green. `main` now has a ruleset requiring
+  `Go 1.26.x (ubuntu-latest)`, and every PR gets auto-merge when it opens.
+- **Landed** (PR #9):
+  - `Recover`, the same for every login: a link or a code to an address,
+    then, for a user with an enrolled factor, that factor. `Finish` sets the
+    password and makes no session; it ends every session and sends
+    `MsgPasswordChanged`.
+  - Links and `Follow`: holding the link is the proof, `Follow` is safe on a
+    GET, and twice returns the same flow.
+  - `Invite` and `Accept`, held to the same rules.
+  - [Review 0009](reviews/0009-m2.2-recover.md) by Gemini 4 Argon (High),
+    about 95k tokens: twelve findings, nine accepted. The one that mattered:
+    `Follow` proved the flow `Recover` had started, so anyone who started a
+    recovery for someone else could finish it once the link was followed,
+    by its owner or by a mail scanner. The first use of a link now moves
+    the flow to a token only the link's holder learns.
+- **Decided:** amendment A11.
+- **Not done:** forgetting the user's devices on recovery comes with
+  devices (M2.3).
+- **Next:** M2.3, devices and verified sessions.
+
 ## 2026-11-15: codes (M2.1)
 
 - PR #7 (M1.6) merged on green. You're allowing auto-merge in the repo;

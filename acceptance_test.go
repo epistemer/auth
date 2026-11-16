@@ -723,3 +723,113 @@ func TestAcceptChallengeEnumeration(t *testing.T) {
 		t.Errorf("past code.hourly: %+v, %d sent", got, sent())
 	}
 }
+
+// Recovery: Recover and Challenge answer alike for a known and an unknown
+// login; Follow twice returns the same flow; a Finish refused for a weak
+// password leaves the flow usable; finishing makes no session, ends the
+// user's sessions and sends MsgPasswordChanged; after Finish the link is
+// ErrBadCode, as is a wrong and an expired one.
+func TestAcceptRecover(t *testing.T) {
+	s := newShop(t)
+	const mail = "sara@toyshop.example"
+	f, _ := s.try(s.ctx, "sara", pw)
+	session, err := s.Auth.Finish(s.ctx, f.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask := func(login string) (auth.Flow, auth.Challenge) {
+		r, err := s.Auth.Recover(s.ctx, login)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.secrets = append(s.secrets, r.Token)
+		c, err := s.Auth.Challenge(s.ctx, r.Token, auth.MethodEmailLink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r, c
+	}
+	sends := func() int {
+		n := 0
+		for _, e := range s.Events() {
+			if e.Kind == "code.sent" {
+				n++
+			}
+		}
+		return n
+	}
+	ghost, gc := ask("ghost")
+	if sends() != 0 {
+		t.Error("an unknown login was sent a message")
+	}
+	r, rc := ask("sara")
+	if gc != rc || ghost.Ready != r.Ready || strings.Join(ghost.Offers, ",") != strings.Join(r.Offers, ",") {
+		t.Errorf("answers differ: %+v %+v / %+v %+v", ghost, gc, r, rc)
+	}
+	m, _ := s.LastMessage(mail)
+	if m.Kind != auth.MsgRecoveryLink {
+		t.Fatalf("message %+v", m)
+	}
+	s.secrets = append(s.secrets, m.Token)
+	a, err := s.Auth.Follow(s.ctx, m.Token)
+	if err != nil || a.Token == r.Token || !a.Ready {
+		t.Fatalf("Follow: %+v %v", a, err)
+	}
+	s.secrets = append(s.secrets, a.Token)
+	if _, err := s.Auth.Finish(s.ctx, r.Token, auth.NewPassword("violet comet hums 83 bells")); !errors.Is(err, auth.ErrFlowExpired) {
+		t.Errorf("the starter's token after Follow: %v", err)
+	}
+	if b, err := s.Auth.Follow(s.ctx, m.Token); err != nil || b.Token != a.Token {
+		t.Errorf("Follow twice: %v", err)
+	}
+	if _, err := s.Auth.Finish(s.ctx, a.Token, auth.NewPassword("password1234")); !errors.Is(err, auth.ErrPasswordCommon) {
+		t.Errorf("a weak password: %v", err)
+	}
+	res, err := s.Auth.Finish(s.ctx, a.Token, auth.NewPassword("violet comet hums 83 bells"))
+	if err != nil || res.Session != nil {
+		t.Fatalf("Finish after a weak password: %+v %v", res, err)
+	}
+	if m, _ := s.LastMessage(mail); m.Kind != auth.MsgPasswordChanged {
+		t.Errorf("last message %v", m.Kind)
+	}
+	if _, err := s.Auth.Finish(s.ctx, a.Token, auth.NewPassword("amber falcon sings 52 hymns")); !errors.Is(err, auth.ErrFlowExpired) {
+		t.Errorf("the flow after Finish: %v", err)
+	}
+	if _, err := s.Auth.StepUp(s.ctx, session.Session); !errors.Is(err, auth.ErrNoSession) {
+		t.Errorf("a session outlived the recovery: %v", err)
+	}
+	for name, link := range map[string]string{"spent": m.Token, "wrong": "not-a-link"} {
+		if _, err := s.Auth.Follow(s.ctx, link); !errors.Is(err, auth.ErrBadCode) {
+			t.Errorf("a %s link: %v", name, err)
+		}
+	}
+	ask("sara")
+	late, _ := s.LastMessage(mail)
+	s.secrets = append(s.secrets, late.Token)
+	s.Clock.Advance(31 * time.Minute)
+	if _, err := s.Auth.Follow(s.ctx, late.Token); !errors.Is(err, auth.ErrBadCode) {
+		t.Errorf("an expired link: %v", err)
+	}
+}
+
+// Invitations: finishing Accept makes no session; the user then signs in.
+func TestAcceptInvitation(t *testing.T) {
+	s := newShop(t)
+	s.AddUser("lina", auth.User{ID: "u9", Name: "lina"}, "lina@toyshop.example")
+	token, err := s.Auth.Invite(s.ctx, "u9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.secrets = append(s.secrets, token)
+	f, err := s.Auth.Accept(s.ctx, token)
+	if err != nil || !f.Ready {
+		t.Fatalf("Accept: %+v %v", f, err)
+	}
+	s.secrets = append(s.secrets, f.Token)
+	if res, err := s.Auth.Finish(s.ctx, f.Token, auth.NewPassword("violet comet hums 83 bells")); err != nil || res.Session != nil {
+		t.Fatalf("Finish: %+v %v", res, err)
+	}
+	if _, err := s.try(s.ctx, "lina", "violet comet hums 83 bells"); err != nil {
+		t.Errorf("signing in after Accept: %v", err)
+	}
+}

@@ -3,6 +3,27 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: refresh tokens (M3.2)
+
+- **Landed** (PR #12, on top of #11, #10 and #9): `Refresh` and `Reissue`
+  (§5.6.8–11).
+  - `Refresh` rotates the refresh token and issues an access token with the
+    `Claimer`'s claims now. A token used again ends its session and records
+    `refresh.reused`; within `refresh.grace` a client that lost the answer
+    gets the same successor, while that successor is unused.
+  - `Reissue` refreshes a session's claims: a new access token for a bearer
+    session, new `Session.Claims` for a cookie one.
+  - [Review 0012](reviews/0012-m3.2-refresh.md) by Gemini 4 Argon (High),
+    about 72k tokens: nine findings, three critical, all fixed. The grace
+    could hand out a successor already used, letting a thief walk the
+    chain; a step-up's old refresh tokens were deleted rather than kept to
+    catch their reuse; and reuse was judged after the `Claimer`, so its
+    failing spared a session.
+- **Decided:** amendment A14.
+- **Still waiting on you:** the ruleset's required check, which holds #9
+  and the four PRs stacked on it.
+- **Next:** M4.1, `Enroll` and factors.
+
 ## 2026-11-16: the access token (M3.1)
 
 - **Landed** (PR #11, on top of #10 and #9): the bearer carrier (§5.6.5–6).

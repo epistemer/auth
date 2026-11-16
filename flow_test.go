@@ -36,6 +36,7 @@ type config struct {
 	origins          []string
 	free, tries      int
 	codeLen          int
+	grace            time.Duration
 	window           time.Duration
 }
 
@@ -44,7 +45,7 @@ func defaults() *config {
 		issuer: "toyshop", secret: cfgx.NewSecret(strings.Repeat("k", 32)),
 		idle: 24 * time.Hour, remembered: 720 * time.Hour, lifetime: 2160 * time.Hour,
 		flow: 15 * time.Minute, minLength: 12, memory: 19, passes: 1,
-		free: 5, tries: 5, window: time.Hour, codeLen: 6,
+		free: 5, tries: 5, window: time.Hour, codeLen: 6, grace: 10 * time.Second,
 	}
 }
 
@@ -55,7 +56,7 @@ func (c *config) AuthSessionIdle() time.Duration           { return c.idle }
 func (c *config) AuthSessionRememberedIdle() time.Duration { return c.remembered }
 func (c *config) AuthSessionLifetime() time.Duration       { return c.lifetime }
 func (c *config) AuthAccessLifetime() time.Duration        { return 10 * time.Minute }
-func (c *config) AuthRefreshGrace() time.Duration          { return 10 * time.Second }
+func (c *config) AuthRefreshGrace() time.Duration          { return c.grace }
 func (c *config) AuthFlowLifetime() time.Duration          { return c.flow }
 func (c *config) AuthFreshWindow() time.Duration           { return 10 * time.Minute }
 func (c *config) AuthCodeLength() int                      { return c.codeLen }

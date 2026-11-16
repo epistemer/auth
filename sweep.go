@@ -15,7 +15,7 @@ import (
 // Sweep removes what has expired: flows past their lifetime, links and
 // invitations past theirs, sessions that ended or are no longer live, with
 // their indexes, and throttle counters that would start again from zero
-// (§8), and devices past theirs. Refresh tokens join with M3. The app schedules it; hourly is enough.
+// (§8), and devices past theirs. A session's refresh tokens go with it. The app schedules it; hourly is enough.
 // It runs in one write transaction, which other writes wait for; Scan
 // hands it copies of keys and values, so deleting after is safe.
 func (a *Auth) Sweep(ctx context.Context) error {
@@ -64,6 +64,33 @@ func (a *Auth) Sweep(ctx context.Context) error {
 		})
 		if err != nil {
 			return err
+		}
+		// A replaced refresh token's sealed successor goes once its grace
+		// is over (§5.6.8); the record stays, to catch reuse.
+		grace := int64(a.cfg.AuthRefreshGrace())
+		var wipe [][]byte
+		err = store.Scan(tx, store.Refresh, nil, func(k, v []byte) error {
+			var r storepb.Refresh
+			if err := proto.Unmarshal(v, &r); err != nil {
+				return err
+			}
+			if len(r.Successor) > 0 && now-r.Replaced >= grace {
+				wipe = append(wipe, k)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		for _, k := range wipe {
+			r := new(storepb.Refresh)
+			if err := store.Get(tx, store.Refresh, k, r); err != nil {
+				return err
+			}
+			r.Successor = nil
+			if err := store.Put(tx, store.Refresh, k, r); err != nil {
+				return err
+			}
 		}
 		var dead []*storepb.Session
 		err = store.Scan(tx, store.Sessions, nil, func(k, v []byte) error {
@@ -122,6 +149,9 @@ func (a *Auth) Sweep(ctx context.Context) error {
 				}
 			}
 			if err := store.Delete(tx, store.SessionsByUser, store.Key([]byte(s.UserId), []byte(s.Id))); err != nil {
+				return err
+			}
+			if err := endRefresh(tx, s.Id); err != nil {
 				return err
 			}
 			if err := store.Delete(tx, store.Sessions, k); err != nil {

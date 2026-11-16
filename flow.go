@@ -834,7 +834,7 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow,
 		}
 		// New tokens for the new privilege; the old refresh tokens end.
 		if sess.Carrier == storepb.Carrier_CARRIER_BEARER {
-			if err := endRefresh(tx, sess.Id); err != nil {
+			if err := a.retireRefresh(tx, sess.Id); err != nil {
 				return err
 			}
 			if refresh, err = a.issueRefresh(tx, sess); err != nil {

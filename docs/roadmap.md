@@ -109,7 +109,7 @@
 | ✓ | ID | Item | Done when |
 |---|----|------|-----------|
 | ☑ | M6.1 | An example app (a toy shop) with web and API sign-in, as its own module | Its end-to-end test signs in, steps up and is refused where it should be |
-| ☐ | M6.2 | README, godoc examples, CHANGELOG, `docs/api-review.md` | Every exported identifier is checked against interface §4 |
+| ☑ | M6.2 | README, godoc examples, CHANGELOG, `docs/api-review.md` | Every exported identifier is checked against interface §4 |
 | ☐ | M6.3 | A security review of the whole package by the other model family at its highest effort | Its findings are handled or recorded |
 | ☐ | M6.4 | `v0.1.0`, the skill `~/.claude/skills/auth/`, and auth in epistemer's global CLAUDE.md | `go get github.com/epistemer/auth@v0.1.0` resolves and the example builds against it |
 

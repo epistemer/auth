@@ -24,8 +24,8 @@ and a review by the other model family, and is recorded as an amendment.
   work, and Claude reviews Gemini's. Reviews run in a scratch folder that holds
   only what's under review.
 - Opens PRs, and merges them into `main` once CI is green and the review
-  findings are handled. Docs-only bookkeeping (status log, roadmap ticks) may go
-  straight to `main`.
+  findings are handled. Docs-only bookkeeping (status log, roadmap ticks) goes in a PR too
+  since the ruleset of 2026-11-16 protects `main` from direct pushes.
 - Decides implementation questions and spike outcomes, each recorded as an ADR.
 - Makes amendments that clarify the interface without changing its intent.
   Each is listed in interface.md's amendments and in the status log, so you

@@ -3,6 +3,18 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: the merge queue cleared
+
+- You fixed the ruleset: it now requires all six CI jobs from GitHub
+  Actions. #9 to #15 merged in order, each retargeted to `main` with its
+  checks green; `main` is the M4.3 branch's tree, and every test passes on
+  it in both modules.
+- Auto-merge acts only when a check completes, so a PR already green when a
+  rule changes waits for a hand merge; and a PR stacked on another branch
+  gets none. From here PRs branch from `main`.
+- **Waiting on you:** nothing.
+- **Next:** M5.1, `auth/access`.
+
 ## 2026-11-16: recovery codes (M4.3)
 
 - **Landed** (PR #15, on top of #14 and those under it): recovery codes

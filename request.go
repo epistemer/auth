@@ -275,13 +275,21 @@ func (a *Auth) Require(reqs ...Requirement) func(http.Handler) http.Handler {
 // Check is Require for code that isn't a route. It returns ErrNoSession
 // without a session, else the first requirement's error.
 func (a *Auth) Check(ctx context.Context, reqs ...Requirement) error {
-	level := false
+	// A Level given outright decides the route's level. Otherwise the
+	// default, Verified, holds unless every requirement names its own
+	// level, as auth/access's Can does; each named level is enforced here
+	// too, so a requirement can't claim one it doesn't check (A18).
+	explicit, unnamed := false, len(reqs) == 0
 	for _, r := range reqs {
 		if r == nil {
 			return errors.New("auth: a nil requirement")
 		}
 		if _, ok := r.(Level); ok {
-			level = true
+			explicit = true
+			continue
+		}
+		if _, ok := r.(interface{ RequiredLevel() Level }); !ok {
+			unnamed = true
 		}
 	}
 	s, ok := From(ctx)
@@ -289,10 +297,15 @@ func (a *Auth) Check(ctx context.Context, reqs ...Requirement) error {
 		return ErrNoSession
 	}
 	ctx = context.WithValue(ctx, clockKey{}, a.now)
-	if !level {
+	if !explicit && unnamed {
 		reqs = append([]Requirement{Verified}, reqs...)
 	}
 	for _, r := range reqs {
+		if named, ok := r.(interface{ RequiredLevel() Level }); ok {
+			if err := named.RequiredLevel().Check(ctx, s); err != nil {
+				return err
+			}
+		}
 		if err := r.Check(ctx, s); err != nil {
 			return err
 		}

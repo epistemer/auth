@@ -101,8 +101,8 @@
 
 | ✓ | ID | Item | Done when |
 |---|----|------|-----------|
-| ☐ | M5.1 | `access.Permission`, groups, grants, memberships, `Check` (§5.10) | §7's permission tests pass |
-| ☐ | M5.2 | `Can` as a requirement, the `root` group, `Stale` | A permission declared after `root` was made is held by `root` |
+| ☑ | M5.1 | `access.Permission`, groups, grants, memberships, `Check` (§5.10) | §7's permission tests pass |
+| ☑ | M5.2 | `Can` as a requirement, the `root` group, `Stale` | A permission declared after `root` was made is held by `root` |
 
 ## M6 — Release
 

@@ -3,6 +3,29 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: permissions (M5.1, M5.2)
+
+- **Landed** (PR #17): `auth/access` (§4.7, §5.10), both M5 items in one
+  PR, since `Can`, `root` and `Stale` are the same few lines.
+  - Permissions declared in code, each the i18n key `permission.<key>`;
+    groups, grants and memberships in the bucket `auth_access`.
+  - `Can(p)` needs a session, `p`'s level and `p`; `root` holds every
+    declared permission, can't be deleted or renamed, and keeps its last
+    member; `Stale` lists grants of keys no longer declared.
+  - [Review 0016](reviews/0016-m5-access.md) by Gemini 4 Argon (High),
+    about 112k tokens: six findings, all accepted. The one that mattered was
+    in `auth.Check`: one requirement naming its level dropped the Verified
+    default for every other requirement on the route.
+- **Decided:** amendment A18.
+- **Not done:** §7's "a credential whose key belongs to another user isn't
+  stored" is about modules' credentials (§5.5.4), which `Enroll` doesn't
+  take before v0.1.0 (A15); it comes with the first module.
+- **For you (API, not blocking):** `access.New(db)` takes no `Recorder`,
+  so grants and memberships record no event (§5.11 asks for one). I'd add
+  `access.New(db, opts ...Option)` with `access.WithRecorder(auth.Recorder)`.
+  Default: leave it out of v0.1.0.
+- **Next:** M6.1, the example app.
+
 ## 2026-11-16: the merge queue cleared
 
 - You fixed the ruleset: it now requires all six CI jobs from GitHub

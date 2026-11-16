@@ -3,6 +3,29 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: the example shop (M6.1)
+
+- **Landed** (this PR): `examples/shop`, a module of its own, which CI
+  tests, vets and keeps tidy like the others.
+  - A toy shop on cfgx settings (`authschema.Group()` in its schema): web
+    sign-in with a cookie, a password and an emailed code, a step-up before
+    approving a payout (`Within(5m)`), reports behind an `Unverified`
+    permission; an API that signs in with a flow token and returns bearer
+    tokens, and refreshes them.
+  - Customers may sign in unverified; whoever can approve payouts always
+    proves two factors (§6.1's policy).
+  - The end-to-end test runs it over TLS with a cookie jar and a clock it
+    moves: sign-in, step-up, stale proofs, forbidden and unverified
+    refusals, a cross-origin sign-in, refresh-token reuse.
+  - [Review 0017](reviews/0017-m6.1-example.md) by Gemini 4 Argon (High),
+    about 54k tokens, and a check of the fixes by Argon (Medium), about 118k
+    (a follow-up carries the whole session): nine of ten findings accepted.
+    The ones that mattered were patterns an app would copy: a step-up that
+    asked only for the password, staff allowed unverified sessions, and API
+    routes outside `Load`, so the throttle saw no client address.
+- **Waiting on you:** nothing new; the three API notes above still stand.
+- **Next:** M6.2, README, godoc examples, CHANGELOG and the API review.
+
 ## 2026-11-16: permissions (M5.1, M5.2)
 
 - **Landed** (PR #17): `auth/access` (§4.7, §5.10), both M5 items in one

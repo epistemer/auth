@@ -53,7 +53,7 @@ jobs:
       - name: Run staticcheck
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.27.x'
         run: |
-          for m in . authschema; do
+          for m in . authschema examples/shop; do
             (cd "$m" && go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...)
           done
 
@@ -61,7 +61,7 @@ jobs:
       - name: Check every go.mod is tidy
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.26.x'
         run: |
-          for m in . authschema; do
+          for m in . authschema examples/shop; do
             (cd "$m" && go mod tidy -diff)
           done
 
@@ -85,11 +85,11 @@ jobs:
       - name: Run tests with race detector
         run: go test -race ./...
 
-      # Its tests include cfgxtest.AssertGenerated, which fails on stale
+      # Their tests include cfgxtest.AssertGenerated, which fails on stale
       # generated settings, and the check that they satisfy auth.Config.
       - name: Test nested modules
         run: |
-          for m in authschema; do
+          for m in authschema examples/shop; do
             echo "== $m"
             (cd "$m" && go vet ./... && go test -race ./...)
           done

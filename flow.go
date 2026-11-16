@@ -524,6 +524,8 @@ func (a *Auth) Prove(ctx context.Context, token string, p Proof) (Flow, error) {
 		return a.provePassword(ctx, token, hash, rec, v, s.value)
 	case MethodEmailCode, MethodSMSCode:
 		return a.proveCode(ctx, token, hash, rec, v, s.method, s.value)
+	case MethodTOTP:
+		return a.proveTOTP(ctx, token, hash, rec, v, s.value)
 	}
 	return a.flowOut(token, rec, v), ErrMethodUnavailable
 }

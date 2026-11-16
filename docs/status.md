@@ -3,6 +3,27 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: authenticator apps (M4.2)
+
+- **Landed** (PR #14, on top of #13 and those under it): TOTP (§5.4).
+  - `internal/totp` passes RFC 6238's SHA-1 vectors and RFC 4226's.
+  - `Enroll(..., MethodTOTP)`, `Challenge` for the secret and its `otpauth`
+    URI, one `Prove` to store it; then the app is the second proof, and a
+    code to an address no longer is.
+  - A code from the step before or after is accepted, never at or before
+    the credential's last step, compared and moved in one transaction.
+  - Secrets are sealed under the user's ID; `Rekey` seals every one under
+    the current secret, those of enrollments in progress too.
+  - [Review 0014](reviews/0014-m4.2-totp.md) by Gemini 4 Argon (High),
+    about 83k tokens: eight findings, all accepted. The two that mattered:
+    racing proofs in an enrollment could store a step that let the
+    enrolling code be used again, and an enrollment begun before a key
+    rotation was never sealed again, so its app could be lost.
+- **Decided:** amendment A16.
+- **Still waiting on you:** the ruleset's required check (#9 and six PRs
+  stacked on it).
+- **Next:** M4.3, recovery codes.
+
 ## 2026-11-16: changing factors (M4.1)
 
 - **Landed** (PR #13, on top of #12 and those under it): `Enroll`,

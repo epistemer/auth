@@ -48,7 +48,7 @@ var whileHashing func()
 
 // enrollable are the methods Enroll can add, by the milestone that adds
 // them. Modules' methods join when their storage does (after v0.1.0).
-var enrollable = map[string]bool{MethodPassword: true}
+var enrollable = map[string]bool{MethodPassword: true, MethodTOTP: true}
 
 // Enroll starts a flow that adds a factor, or changes the password, for the
 // session's user. It needs a verified session and a proof made within
@@ -165,6 +165,8 @@ func (a *Auth) finishEnroll(ctx context.Context, hash []byte, rec *storepb.Flow,
 	switch rec.EnrollMethod {
 	case MethodPassword:
 		return a.changePassword(ctx, hash, sess, u, o)
+	case MethodTOTP:
+		return a.addFactor(ctx, hash, sess, u)
 	}
 	return Result{}, fmt.Errorf("auth: enrolling %q: %w", rec.EnrollMethod, ErrMethodUnavailable)
 }
@@ -233,6 +235,55 @@ func (a *Auth) changePassword(ctx context.Context, hash []byte, sess *storepb.Se
 	// Any password set from a session is a change: the first one too.
 	_ = replaced
 	a.notify(ctx, u, MsgPasswordChanged)
+	return Result{Session: toSession(out)}, nil
+}
+
+// addFactor stores the factor an Enroll flow proved, checking §5.1.9 again
+// in the same transaction, and sends MsgFactorAdded.
+func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session, u User) (Result, error) {
+	out := new(storepb.Session)
+	var method string
+	err := a.db.Update(func(tx *bolt.Tx) error {
+		if err := store.Get(tx, store.Sessions, []byte(sess.Id), out); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return errNoSession
+			}
+			return err
+		}
+		if !a.live(out) {
+			return errNoSession
+		}
+		if err := a.mayChangeTx(tx, out, u.ID); err != nil {
+			return err
+		}
+		cur := new(storepb.Flow)
+		if err := store.Get(tx, store.Flows, hash, cur); err != nil {
+			return err
+		}
+		if _, err := a.spend(tx, hash); err != nil {
+			return err
+		}
+		method = cur.EnrollMethod
+		switch method {
+		case MethodTOTP:
+			return a.enrollTOTP(tx, cur)
+		}
+		return errChanged
+	})
+	switch {
+	case errors.Is(err, errNoSession):
+		return Result{}, ErrNoSession
+	case errors.Is(err, ErrNotVerified), errors.Is(err, ErrStale):
+		return Result{}, err
+	case errors.Is(err, store.ErrNotFound):
+		return Result{}, ErrFlowExpired
+	case errors.Is(err, errChanged):
+		return Result{}, ErrNotReady
+	case err != nil:
+		return Result{}, err
+	}
+	a.record(ctx, Event{Kind: "factor.added", User: u.ID, Session: SessionID(sess.Id), Method: method})
+	a.notify(ctx, u, MsgFactorAdded)
 	return Result{Session: toSession(out)}, nil
 }
 

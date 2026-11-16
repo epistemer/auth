@@ -3,6 +3,26 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: v0.1.0 (M6.4)
+
+- **Released:** `v0.1.0` of the core is tagged on PR #21's merge, and
+  `authschema/v0.1.0` on PR #22's, which drops the `replace` and requires
+  the tagged core (ADR 0004). Both resolve through the module proxy. A
+  copy of `examples/shop` with no `replace` builds and passes its
+  end-to-end test against them, which is M6.4's done-when.
+- **Skill:** `~/.claude/skills/auth/` covers wiring, routes, flows,
+  managing, permissions, errors, the rules an app must keep, and tests.
+  Your global CLAUDE.md names it, beside the release.
+- **v0.1 is done:** every milestone of the roadmap through M6 is ticked.
+- **For you:**
+  - **v1.0.0 is your call.** It promises the API, the stored formats and
+    the rules won't break.
+  - **Three API notes, still open:** `authschema.ValidSecret`,
+    `authtest.NewWith`, and `access.New(db, opts...)` with `WithRecorder`.
+- **Next:** the roadmap's "after v0.1.0" items. First is `auth/passkey`
+  (v0.2.0), with its own interface section; your lock of that section
+  comes first.
+
 ## 2026-11-16: the security review (M6.3)
 
 - **Landed** (this PR): [review 0019](reviews/0019-m6.3-security.md).

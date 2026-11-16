@@ -107,9 +107,10 @@ func (a *Auth) verifyAccess(token string, now time.Time) (*storepb.Session, acce
 	if _, err := dec.Token(); err != io.EOF {
 		return nil, c, nil, errBadAccess // something after the object
 	}
+	// The app's claims, when present, are an object: never null (A13).
 	var app map[string]any
-	if len(c.App) > 0 && string(c.App) != "null" {
-		if err := json.Unmarshal(c.App, &app); err != nil {
+	if c.App != nil {
+		if err := json.Unmarshal(c.App, &app); err != nil || app == nil {
 			return nil, c, nil, errBadAccess
 		}
 	}

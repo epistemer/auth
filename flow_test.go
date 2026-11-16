@@ -707,10 +707,10 @@ func TestOneProofIsOneFactor(t *testing.T) {
 	at := k.clock.now().UnixNano()
 	code := &storepb.Factor{Method: MethodEmailCode, At: at}
 	pw := &storepb.Factor{Method: MethodPassword, At: at}
-	if k.twoFactors([]*storepb.Factor{code}) {
+	if k.twoFactors([]*storepb.Factor{code}, nil) {
 		t.Error("an emailed code alone counts twice")
 	}
-	if !k.twoFactors([]*storepb.Factor{pw, code}) {
+	if !k.twoFactors([]*storepb.Factor{pw, code}, nil) {
 		t.Error("a password and a code don't count as two")
 	}
 }

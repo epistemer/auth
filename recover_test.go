@@ -427,7 +427,7 @@ func TestStaleLinks(t *testing.T) {
 	if _, err := k.Follow(k.ctx, old); !errors.Is(err, ErrBadCode) {
 		t.Errorf("an older link: %v", err)
 	}
-	if _, err := k.Finish(k.ctx, held.Token, NewPassword("amber falcon sings 52 hymns")); !errors.Is(err, ErrNotReady) {
+	if _, err := k.Finish(k.ctx, held.Token, NewPassword("amber falcon sings 52 hymns")); !errors.Is(err, ErrFlowExpired) {
 		t.Errorf("an older flow: %v", err)
 	}
 	if _, err := k.Accept(k.ctx, inv); !errors.Is(err, ErrBadCode) {

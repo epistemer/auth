@@ -61,7 +61,7 @@ func (a *Auth) Enroll(ctx context.Context, s *Session, method string) (Flow, err
 	if !enrollable[method] {
 		return Flow{}, ErrMethodUnavailable
 	}
-	sess, u, err := a.liveSession(ctx, s.ID)
+	sess, u, err := a.liveSession(ctx, s)
 	if err != nil {
 		return Flow{}, err
 	}
@@ -85,11 +85,12 @@ func (a *Auth) Enroll(ctx context.Context, s *Session, method string) (Flow, err
 	})
 }
 
-// liveSession reads a live session and its user, who mustn't be disabled.
-func (a *Auth) liveSession(ctx context.Context, id SessionID) (*storepb.Session, User, error) {
+// liveSession reads the live session s names, at the generation s was read
+// at, and its user, who mustn't be disabled.
+func (a *Auth) liveSession(ctx context.Context, s *Session) (*storepb.Session, User, error) {
 	sess := new(storepb.Session)
-	err := a.db.View(func(tx *bolt.Tx) error { return store.Get(tx, store.Sessions, []byte(id), sess) })
-	if errors.Is(err, store.ErrNotFound) || err == nil && !a.live(sess) {
+	err := a.db.View(func(tx *bolt.Tx) error { return store.Get(tx, store.Sessions, []byte(s.ID), sess) })
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!a.live(sess) || s.superseded(sess)) {
 		return nil, User{}, ErrNoSession
 	}
 	if err != nil {
@@ -164,7 +165,7 @@ func (a *Auth) finishEnroll(ctx context.Context, hash []byte, rec *storepb.Flow,
 	if !v.ready {
 		return Result{}, ErrNotReady
 	}
-	sess, u, err := a.liveSession(ctx, cur.ID)
+	sess, u, err := a.liveSession(ctx, cur)
 	if err != nil {
 		return Result{}, err
 	}
@@ -213,7 +214,7 @@ func (a *Auth) changePassword(ctx context.Context, hash []byte, sess *storepb.Se
 			}
 			return err
 		}
-		if !a.live(out) {
+		if !a.live(out) || out.Generation != sess.Generation {
 			return errNoSession
 		}
 		if err := a.mayChangeTx(tx, out, u.ID); err != nil {
@@ -262,7 +263,7 @@ func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session
 			}
 			return err
 		}
-		if !a.live(out) {
+		if !a.live(out) || out.Generation != sess.Generation {
 			return errNoSession
 		}
 		if err := a.mayChangeTx(tx, out, u.ID); err != nil {
@@ -367,7 +368,7 @@ func (a *Auth) RemoveFactor(ctx context.Context, s *Session, factorID string) er
 	if !ok || herr != nil || len(raw) != 32 || !isSecond(method) || method == MethodRecoveryCode {
 		return ErrMethodUnavailable
 	}
-	sess, u, err := a.liveSession(ctx, s.ID)
+	sess, u, err := a.liveSession(ctx, s)
 	if err != nil {
 		return err
 	}
@@ -381,7 +382,7 @@ func (a *Auth) RemoveFactor(ctx context.Context, s *Session, factorID string) er
 		found = false
 		// §5.1.9 again, on the state the removal is made on.
 		cur := new(storepb.Session)
-		if err := store.Get(tx, store.Sessions, []byte(sess.Id), cur); err != nil || !a.live(cur) {
+		if err := store.Get(tx, store.Sessions, []byte(sess.Id), cur); err != nil || !a.live(cur) || cur.Generation != sess.Generation {
 			if err == nil || errors.Is(err, store.ErrNotFound) {
 				return errNoSession
 			}

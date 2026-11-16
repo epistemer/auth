@@ -204,7 +204,7 @@ func (a *Auth) StepUp(ctx context.Context, s *Session) (Flow, error) {
 	err := a.db.View(func(tx *bolt.Tx) error {
 		return store.Get(tx, store.Sessions, []byte(s.ID), &sess)
 	})
-	if errors.Is(err, store.ErrNotFound) || err == nil && !a.live(&sess) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (!a.live(&sess) || s.superseded(&sess)) {
 		return Flow{}, ErrNoSession
 	}
 	if err != nil {
@@ -280,7 +280,11 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		if err != nil {
 			return view{}, err
 		}
-		verified := a.twoFactors(proofs)
+		enrolled, err := a.enrolled(u.ID)
+		if err != nil {
+			return view{}, err
+		}
+		verified := a.twoFactors(proofs, enrolled)
 		if !verified && pol.TrustDevices {
 			if verified, err = a.deviceOK(rec); err != nil {
 				return view{}, err
@@ -319,7 +323,11 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		if err != nil {
 			return view{}, err
 		}
-		verified := sess.Verified || a.twoFactors(append(slices.Clone(sess.Factors), proofs...))
+		enrolled, err := a.enrolled(u.ID)
+		if err != nil {
+			return view{}, err
+		}
+		verified := sess.Verified || a.twoFactors(append(slices.Clone(sess.Factors), proofs...), enrolled)
 		v := view{verified: verified, ready: len(proofs) > 0 && (verified || pol.AllowUnverified)}
 		has, err := a.hasPassword(UserID(rec.UserId))
 		if err != nil {
@@ -333,6 +341,13 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		v.cannot = !verified && !pol.AllowUnverified && len(seconds) == 0
 		return v, nil
 	case PurposeRecover:
+		// A recovery older than the password is stale (A11): it takes no
+		// more proofs, so it can't spend a recovery code or a TOTP step.
+		// Judged once it holds a proof: before, a known and an unknown
+		// login's flows must look alike (§5.1.3).
+		if err := a.notStale(rec); err != nil {
+			return view{}, err
+		}
 		// The first proof is a link or a code to an address; then, for a
 		// user with an enrolled factor, that factor: a second message to an
 		// address never counts (§5.1.7).
@@ -351,7 +366,7 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		// Bound to its session, which must still be live, of a user not
 		// disabled (§5.1.12). A new password needs nothing more proved; it
 		// comes at Finish, which checks §5.1.9 again.
-		sess, _, err := a.liveSession(ctx, SessionID(rec.SessionId))
+		sess, _, err := a.liveSession(ctx, &Session{ID: SessionID(rec.SessionId)})
 		if err != nil {
 			return view{}, err
 		}
@@ -363,6 +378,9 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		}
 		return view{offers: []string{rec.EnrollMethod}, verified: sess.Verified}, nil
 	case PurposeAccept:
+		if err := a.notStale(rec); err != nil {
+			return view{}, err
+		}
 		// An invitation sets a password, so it is held to the same rule as
 		// a recovery: a user with an enrolled factor must prove it too.
 		if !proven(func(m string) bool { return m == methodInvitation }) {
@@ -380,19 +398,61 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 	return view{}, fmt.Errorf("auth: a flow with purpose %d", rec.Purpose)
 }
 
+// notStale refuses a flow that sets a password, once it holds a proof,
+// if the password has changed since it began.
+func (a *Auth) notStale(rec *storepb.Flow) error {
+	var stale bool
+	err := a.db.View(func(tx *bolt.Tx) (err error) {
+		stale, err = staleTx(tx, rec)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if stale {
+		return ErrFlowExpired
+	}
+	return nil
+}
+
+// staleTx reports, in tx, whether rec is a recovery or an invitation that
+// holds a proof and is older than the user's password.
+func staleTx(tx *bolt.Tx, rec *storepb.Flow) (bool, error) {
+	p := Purpose(rec.Purpose)
+	if p != PurposeRecover && p != PurposeAccept || rec.UserId == "" || len(rec.Proofs) == 0 {
+		return false, nil
+	}
+	added, err := passwordAdded(tx, UserID(rec.UserId))
+	return added > rec.Created, err
+}
+
 func isSecond(m string) bool { return secondMethods[m] }
+
+// countsAsSecond reports whether a proof of m is a second method for a
+// user with the enrolled factors: with none, any second method; with
+// some, only one of them or a recovery code (§5.7.2).
+func countsAsSecond(m string, enrolled []string) bool {
+	if !isSecond(m) {
+		return false
+	}
+	return len(enrolled) == 0 || slices.Contains(enrolled, m) || m == MethodRecoveryCode
+}
 
 // twoFactors reports whether proofs hold a first method and a second
 // method in two distinct proofs: a method that may be either, proved once,
 // is one factor, not two (§5.7.1), and two proofs that reached the user
-// through one address are one (§5.7.2).
-func (a *Auth) twoFactors(proofs []*storepb.Factor) bool {
+// through one address are one (§5.7.2). Once the user has enrolled a
+// factor, only it or a recovery code is a second method: a code sent to an
+// address no longer is, also when it was proved before the enrolment
+// (§5.7.2).
+func (a *Auth) twoFactors(proofs []*storepb.Factor, enrolled []string) bool {
+	second := func(m string) bool { return countsAsSecond(m, enrolled) }
 	for i, p := range proofs {
 		if !slices.Contains(a.first, p.Method) {
 			continue
 		}
 		for j, q := range proofs {
-			if i == j || !isSecond(q.Method) {
+			if i == j || !second(q.Method) {
 				continue
 			}
 			if len(p.Channel) > 0 && bytes.Equal(p.Channel, q.Channel) {
@@ -550,6 +610,9 @@ func (a *Auth) Prove(ctx context.Context, token string, p Proof) (Flow, error) {
 	return a.flowOut(token, rec, v), ErrMethodUnavailable
 }
 
+// whileVerifying lets a test act while provePassword hashes.
+var whileVerifying func()
+
 // provePassword does one password hash whatever the login: against the
 // user's hash, or the dummy for an unknown login or a user with no
 // password (§5.1.4).
@@ -568,10 +631,15 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 		}
 		return before, err
 	}
+	// The proof is dated when the hash it is checked against was read: a
+	// password changed while it was hashing is newer, and current() then
+	// drops the proof (§5.1.10).
+	read := a.now().UnixNano()
 	var stored string
+	var storedAdded int64
 	if !rec.NoUser {
 		var err error
-		if stored, err = a.passwordHash(UserID(rec.UserId)); err != nil {
+		if stored, storedAdded, err = a.passwordRecord(UserID(rec.UserId)); err != nil {
 			return before, err
 		}
 	}
@@ -584,6 +652,9 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 	} else {
 		var err error
 		ok, rehash, err = a.hasher.Verify(ctx, pw, stored)
+		if whileVerifying != nil {
+			whileVerifying()
+		}
 		switch {
 		case errors.Is(err, password.ErrMalformed):
 			reason = "malformed_hash"
@@ -603,19 +674,33 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 		a.record(ctx, Event{Kind: "proof.refused", User: u.ID, Session: SessionID(rec.SessionId), Method: MethodPassword, Reason: "disabled"})
 		return before, ErrUserDisabled
 	}
-	// Only a proof that is accepted clears counters; a disabled user's
-	// right password stays counted, the strict side.
-	if err := a.succeed(at); err != nil {
-		return before, err
-	}
 	if rehash {
 		// A failure here costs only the upgrade; the next sign-in retries.
 		if phc, err := a.hasher.Hash(ctx, pw); err == nil {
 			_, _, _ = a.storePassword(u.ID, phc, stored)
 		}
 	}
-	rec, err = a.addProof(hash, &storepb.Factor{Method: MethodPassword, At: a.now().UnixNano()})
+	// Recorded only if the password is still the one checked: a change
+	// while it hashed sets a new time (a rehash keeps it), and the old
+	// password is then refused (§5.1.10).
+	got, err := a.addProofIf(hash, &storepb.Factor{Method: MethodPassword, At: read}, func(tx *bolt.Tx) error {
+		added, err := passwordAdded(tx, u.ID)
+		if err == nil && added != storedAdded {
+			return errChanged
+		}
+		return err
+	})
+	if errors.Is(err, errChanged) {
+		a.record(ctx, Event{Kind: "proof.refused", User: u.ID, Session: SessionID(rec.SessionId), Method: MethodPassword, Reason: "changed"})
+		return before, ErrBadCredentials
+	}
 	if err != nil {
+		return before, err
+	}
+	rec = got
+	// Only a proof that is accepted clears counters; a disabled user's
+	// right password stays counted, the strict side.
+	if err := a.succeed(at); err != nil {
 		return before, err
 	}
 	a.record(ctx, Event{Kind: "proof.accepted", User: u.ID, Session: SessionID(rec.SessionId), Method: MethodPassword})
@@ -632,8 +717,18 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 
 // addProof records a proof in the flow, which must still be live.
 func (a *Auth) addProof(hash []byte, f *storepb.Factor) (*storepb.Flow, error) {
+	return a.addProofIf(hash, f, nil)
+}
+
+// addProofIf is addProof, if check, run in the same transaction, passes.
+func (a *Auth) addProofIf(hash []byte, f *storepb.Factor, check func(tx *bolt.Tx) error) (*storepb.Flow, error) {
 	rec := new(storepb.Flow)
 	err := a.db.Update(func(tx *bolt.Tx) error {
+		if check != nil {
+			if err := check(tx); err != nil {
+				return err
+			}
+		}
 		if err := store.Get(tx, store.Flows, hash, rec); err != nil {
 			return err
 		}
@@ -667,17 +762,26 @@ func (a *Auth) Finish(ctx context.Context, token string, opts ...FinishOption) (
 	for _, f := range opts {
 		f(&o)
 	}
+	var res Result
 	switch Purpose(rec.Purpose) {
 	case PurposeSignIn:
-		return a.finishSignIn(ctx, hash, rec, o)
+		res, err = a.finishSignIn(ctx, hash, rec, o)
 	case PurposeStepUp:
-		return a.finishStepUp(ctx, hash, rec, o)
+		res, err = a.finishStepUp(ctx, hash, rec, o)
 	case PurposeRecover, PurposeAccept:
-		return a.finishPassword(ctx, hash, rec, o)
+		res, err = a.finishPassword(ctx, hash, rec, o)
 	case PurposeEnroll:
-		return a.finishEnroll(ctx, hash, rec, o)
+		res, err = a.finishEnroll(ctx, hash, rec, o)
+	default:
+		return Result{}, fmt.Errorf("auth: a flow with purpose %d", rec.Purpose)
 	}
-	return Result{}, fmt.Errorf("auth: a flow with purpose %d", rec.Purpose)
+	if err != nil {
+		return Result{}, err
+	}
+	// Result.Write clears the flow cookie under the name it was set with,
+	// whatever the purpose.
+	res.insecure = a.cfg.AuthCookieInsecure()
+	return res, nil
 }
 
 func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow, o finishOptions) (Result, error) {
@@ -729,7 +833,11 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		if err != nil {
 			return err
 		}
-		two := a.twoFactors(proofs)
+		enrolled, err := enrolledTx(tx, u.ID)
+		if err != nil {
+			return err
+		}
+		two := a.twoFactors(proofs, enrolled)
 		used := d != nil && !two && pol.TrustDevices
 		if sess.Verified && !two && !used {
 			// The device went since the view: verified no more.
@@ -855,14 +963,24 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow,
 		if err := store.Get(tx, store.Sessions, []byte(rec.SessionId), sess); err != nil {
 			return err
 		}
-		if !a.live(sess) {
+		if !a.live(sess) || cur.superseded(sess) {
 			return errNoSession
 		}
 		if err := store.Delete(tx, store.SessionTokens, sess.TokenHash); err != nil {
 			return err
 		}
+		// Judged again under the write lock: a factor enrolled since the
+		// view takes away what an address code proved (§5.7.2).
+		enrolled, err := enrolledTx(tx, u.ID)
+		if err != nil {
+			return err
+		}
+		two := a.twoFactors(append(slices.Clone(sess.Factors), proofs...), enrolled)
+		if v.verified && !sess.Verified && !two && !a.policy(ctx, u).AllowUnverified {
+			return errChanged
+		}
 		sess.TokenHash = tokenHash
-		sess.Verified = sess.Verified || v.verified
+		sess.Verified = sess.Verified || two
 		sess.Generation++
 		sess.Factors = append(sess.Factors, proofs...)
 		sess.Claims = claims
@@ -873,7 +991,7 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow,
 		if err != nil {
 			return err
 		}
-		if o.device != nil && cur == nil && slices.ContainsFunc(proofs, func(p *storepb.Factor) bool { return isSecond(p.Method) }) && a.twoFactors(sess.Factors) {
+		if o.device != nil && cur == nil && slices.ContainsFunc(proofs, func(p *storepb.Factor) bool { return countsAsSecond(p.Method, enrolled) }) && a.twoFactors(sess.Factors, enrolled) {
 			t, nd, err := a.registerDevice(tx, u.ID, *o.device)
 			if err != nil {
 				return err

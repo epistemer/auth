@@ -313,9 +313,10 @@ func (a *Auth) Check(ctx context.Context, reqs ...Requirement) error {
 	return nil
 }
 
-// SignOut ends the cookie session the request carried and clears its
-// cookie. Without a session it only clears the cookie. If ending fails the
-// cookie stays, so the user can try again.
+// SignOut ends the session the request carried and clears the session
+// cookie: its cookie session, also one beside a bearer header, else its
+// bearer session. Without a session it only clears the cookie. If ending
+// fails the cookie stays, so the user can try again.
 func (a *Auth) SignOut(ctx context.Context, w http.ResponseWriter) error {
 	if s, ok := carried(ctx); ok {
 		if err := a.end(ctx, s.User, s.ID, "signout"); err != nil {
@@ -364,6 +365,9 @@ func (a *Auth) end(ctx context.Context, user UserID, id SessionID, reason string
 
 // RevokeUser ends every session of a user.
 func (a *Auth) RevokeUser(ctx context.Context, id UserID) error {
+	if err := validID(id); err != nil {
+		return err
+	}
 	var ended []string
 	err := a.db.Update(func(tx *bolt.Tx) error {
 		var err error

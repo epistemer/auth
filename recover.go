@@ -193,7 +193,7 @@ func (a *Auth) Invite(ctx context.Context, id UserID) (string, error) {
 	var to string
 	var ch Channel
 	for _, c := range []Channel{ChannelEmail, ChannelSMS} {
-		addr, err := a.dir.Address(ctx, id, c)
+		addr, err := a.address(ctx, id, c)
 		if err != nil {
 			return "", fmt.Errorf("auth: an address: %w", err)
 		}
@@ -257,6 +257,9 @@ func (a *Auth) finishPassword(ctx context.Context, hash []byte, rec *storepb.Flo
 	if err != nil {
 		return Result{}, err
 	}
+	if whileHashing != nil {
+		whileHashing()
+	}
 	var replaced bool
 	var ended []string
 	err = a.db.Update(func(tx *bolt.Tx) error {
@@ -273,6 +276,17 @@ func (a *Auth) finishPassword(ctx context.Context, hash []byte, rec *storepb.Flo
 		}
 		if added > cur.Created {
 			return errChanged // the password changed since this flow began
+		}
+		// A factor enrolled while the password was hashed must have been
+		// proved too (§5.1.7).
+		enrolled, err := enrolledTx(tx, u.ID)
+		if err != nil {
+			return err
+		}
+		if len(enrolled) > 0 && !slices.ContainsFunc(cur.Proofs, func(f *storepb.Factor) bool {
+			return slices.Contains(enrolled, f.Method) || f.Method == MethodRecoveryCode
+		}) {
+			return errChanged
 		}
 		if _, err := a.spend(tx, hash); err != nil {
 			return err

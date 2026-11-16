@@ -213,7 +213,7 @@ func (a *Auth) Reissue(ctx context.Context, s *Session) (string, error) {
 	}
 	var first storepb.Session
 	err := a.db.View(func(tx *bolt.Tx) error { return store.Get(tx, store.Sessions, []byte(s.ID), &first) })
-	if errors.Is(err, store.ErrNotFound) || err == nil && (first.UserId != string(s.User) || !a.live(&first)) {
+	if errors.Is(err, store.ErrNotFound) || err == nil && (first.UserId != string(s.User) || !a.live(&first) || s.superseded(&first)) {
 		return "", ErrNoSession
 	}
 	if err != nil {
@@ -238,7 +238,7 @@ func (a *Auth) Reissue(ctx context.Context, s *Session) (string, error) {
 		if err := store.Get(tx, store.Sessions, []byte(s.ID), rec); err != nil {
 			return err
 		}
-		if rec.UserId != string(u.ID) || !a.live(rec) {
+		if rec.UserId != string(u.ID) || !a.live(rec) || rec.Generation != first.Generation {
 			return store.ErrNotFound
 		}
 		rec.Claims = claims

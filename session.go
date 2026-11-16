@@ -33,6 +33,17 @@ type Session struct {
 	Expires  time.Time // the absolute end, session.lifetime after Created
 	Client   Client    // as seen when it was made
 	Claims   map[string]any
+
+	// gen is the session's generation when this copy was read. A step-up
+	// raises it and replaces the token, so a copy read before it, from the
+	// token it replaced, can't act on the upgraded session (review 0019).
+	gen uint32
+}
+
+// superseded reports whether rec has moved past the generation s was read
+// at. A Session made by hand, with no generation, is judged by its ID.
+func (s *Session) superseded(rec *storepb.Session) bool {
+	return s != nil && s.gen != 0 && rec.Generation != s.gen
 }
 
 // Factor is one proof a session's flows accepted.
@@ -150,6 +161,7 @@ func toSession(s *storepb.Session) *Session {
 	out := &Session{
 		ID: SessionID(s.Id), User: UserID(s.UserId), Verified: s.Verified, Device: DeviceID(s.DeviceId),
 		Created: time.Unix(0, s.Created), Seen: time.Unix(0, s.Seen), Expires: time.Unix(0, s.Expires),
+		gen: s.Generation,
 	}
 	for _, f := range s.Factors {
 		out.Factors = append(out.Factors, Factor{Method: f.Method, At: time.Unix(0, f.At)})

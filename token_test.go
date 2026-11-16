@@ -137,6 +137,8 @@ func TestBearerForged(t *testing.T) {
 		"another gen":      k.forge(`{"alg":"HS256","typ":"at+jwt"}`, with(func(c *accessClaims) { c.Gen = 2 })),
 		"expired":          k.forge(`{"alg":"HS256","typ":"at+jwt"}`, with(func(c *accessClaims) { c.Exp = now.Unix() })),
 		"no session":       k.forge(`{"alg":"HS256","typ":"at+jwt"}`, with(func(c *accessClaims) { c.Sid = "nope" })),
+		"app null":         k.forge(`{"alg":"HS256","typ":"at+jwt"}`, with(func(c *accessClaims) { c.App = json.RawMessage("null") })),
+		"app array":        k.forge(`{"alg":"HS256","typ":"at+jwt"}`, with(func(c *accessClaims) { c.App = json.RawMessage("[1]") })),
 		"two parts":        strings.Join(strings.Split(res.Access, ".")[:2], "."),
 		"garbage":          "not.a.token",
 	} {

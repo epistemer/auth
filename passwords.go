@@ -42,7 +42,7 @@ func (a *Auth) CheckPassword(ctx context.Context, pw string, hints ...string) er
 func (a *Auth) userHints(ctx context.Context, u User) ([]string, error) {
 	hints := []string{u.Name}
 	for _, ch := range []Channel{ChannelEmail, ChannelSMS} {
-		addr, err := a.dir.Address(ctx, u.ID, ch)
+		addr, err := a.address(ctx, u.ID, ch)
 		if err != nil {
 			return nil, fmt.Errorf("auth: an address: %w", err)
 		}
@@ -96,12 +96,18 @@ func passwordKey(id UserID) []byte {
 
 // passwordHash returns a user's PHC string, or "" for a user with none.
 func (a *Auth) passwordHash(id UserID) (string, error) {
+	h, _, err := a.passwordRecord(id)
+	return h, err
+}
+
+// passwordRecord returns a user's hash and when the password was set.
+func (a *Auth) passwordRecord(id UserID) (string, int64, error) {
 	var c storepb.Credential
 	err := a.db.View(func(tx *bolt.Tx) error { return store.Get(tx, store.Credentials, passwordKey(id), &c) })
 	if errors.Is(err, store.ErrNotFound) {
-		return "", nil
+		return "", 0, nil
 	}
-	return string(c.Data), err
+	return string(c.Data), c.Added, err
 }
 
 func (a *Auth) hasPassword(id UserID) (bool, error) {
@@ -175,7 +181,7 @@ func (a *Auth) storePasswordTx(tx *bolt.Tx, id UserID, phc, rehashOf, keep strin
 // no email. A failure is an event: the change it reports already happened.
 func (a *Auth) notify(ctx context.Context, u User, kind MessageKind) {
 	for _, ch := range []Channel{ChannelEmail, ChannelSMS} {
-		addr, err := a.dir.Address(ctx, u.ID, ch)
+		addr, err := a.address(ctx, u.ID, ch)
 		if err != nil || addr == "" {
 			continue
 		}

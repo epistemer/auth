@@ -239,8 +239,8 @@ func (ac *Access) Check(ctx context.Context, id auth.UserID, p *Perm) error {
 var (
 	errUndeclared = errors.New("access: a permission that wasn't declared")
 	errNoGroup    = errors.New("access: no such group")
-	errRoot     = errors.New("access: the group root can't be changed so")
-	errLastRoot = errors.New("access: root's last member can't leave")
+	errRoot       = errors.New("access: the group root can't be changed so")
+	errLastRoot   = errors.New("access: root's last member can't leave")
 )
 
 func groupExists(tx *bolt.Tx, id GroupID) bool { return b(tx, groupsB).Get([]byte(id)) != nil }

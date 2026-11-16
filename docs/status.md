@@ -3,6 +3,27 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: recovery codes (M4.3)
+
+- **Landed** (PR #15, on top of #14 and those under it): recovery codes
+  (§5.4.6). Ten codes of sixteen base32 characters come with the first
+  factor, stored as SHA-256, each used once; a new set cancels the old; a
+  code is a second proof in a sign-in, a step-up and a recovery, and
+  survives any rotation of the secret.
+  - [Review 0015](reviews/0015-m4.3-recovery-codes.md) by Gemini 4 Argon
+    (High), about 91k tokens: six findings, five accepted. Its critical one
+    was wrong (spending the last code leaves the sign-in verified); a test
+    now shows it. The one that mattered: a code could be burnt on a flow a
+    racing TOTP proof had already verified.
+- **Decided:** amendment A17.
+- M4 is done: §7's factor lines all pass.
+- **Waiting on you:** the ruleset "CI check" requires `Go 1.26.x
+  (ubuntu-latest)` from app 1236702, while CI runs on GitHub Actions (app
+  15368): the required check never arrives, so #9 and the six PRs stacked
+  on it (#10–#15) can't merge. Set the required check's source to GitHub
+  Actions, or any source, and they merge in order.
+- **Next:** M5.1, `auth/access`.
+
 ## 2026-11-16: authenticator apps (M4.2)
 
 - **Landed** (PR #14, on top of #13 and those under it): TOTP (§5.4).

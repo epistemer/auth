@@ -96,7 +96,7 @@ func TestEnrollTOTP(t *testing.T) {
 	// Signing in now offers the app, never the emailed code.
 	k.clock.advance(time.Minute)
 	sf := passwordOnly(t, k, "sara")
-	if strings.Join(sf.Offers, ",") != MethodTOTP {
+	if strings.Join(sf.Offers, ",") != "totp,recovery_code" {
 		t.Errorf("offers with TOTP: %v", sf.Offers)
 	}
 	if _, err := k.Challenge(k.ctx, sf.Token, MethodEmailCode); !errors.Is(err, ErrMethodUnavailable) {

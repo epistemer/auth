@@ -339,11 +339,11 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		if !proven(func(m string) bool { return slices.Contains(recoverFirst, m) }) {
 			return view{offers: slices.Clone(recoverFirst)}, nil
 		}
-		enrolled, err := a.enrolled(UserID(rec.UserId))
+		enrolled, err := a.factorMethods(UserID(rec.UserId))
 		if err != nil {
 			return view{}, err
 		}
-		if len(enrolled) == 0 || proven(func(m string) bool { return slices.Contains(enrolled, m) }) {
+		if len(enrolled) == 0 || proven(func(m string) bool { return slices.Contains(enrolled, m) || m == MethodRecoveryCode }) {
 			return view{ready: true}, nil
 		}
 		return view{offers: enrolled}, nil
@@ -355,7 +355,7 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		if err != nil {
 			return view{}, err
 		}
-		if rec.EnrollMethod == MethodPassword {
+		if rec.EnrollMethod == MethodPassword || rec.EnrollMethod == MethodRecoveryCode {
 			return view{ready: true, verified: sess.Verified}, nil
 		}
 		if proven(func(m string) bool { return m == rec.EnrollMethod }) {
@@ -368,11 +368,11 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 		if !proven(func(m string) bool { return m == methodInvitation }) {
 			return view{}, nil
 		}
-		enrolled, err := a.enrolled(UserID(rec.UserId))
+		enrolled, err := a.factorMethods(UserID(rec.UserId))
 		if err != nil {
 			return view{}, err
 		}
-		if len(enrolled) == 0 || proven(func(m string) bool { return slices.Contains(enrolled, m) }) {
+		if len(enrolled) == 0 || proven(func(m string) bool { return slices.Contains(enrolled, m) || m == MethodRecoveryCode }) {
 			return view{ready: true}, nil
 		}
 		return view{offers: enrolled}, nil
@@ -418,14 +418,32 @@ func current(proofs []*storepb.Factor, added int64) []*storepb.Factor {
 // directory has. Factors arrive with M4; until then every user is the
 // second case.
 func (a *Auth) seconds(ctx context.Context, u User) ([]string, error) {
-	enrolled, err := a.enrolled(u.ID)
+	factors, err := a.factorMethods(u.ID)
 	if err != nil {
 		return nil, err
 	}
-	if len(enrolled) > 0 {
-		return enrolled, nil
+	if len(factors) > 0 {
+		return factors, nil
 	}
 	return a.addresses(ctx, u)
+}
+
+// factorMethods are a user's enrolled factors and, with them, a recovery
+// code while one is left (§5.4.6).
+func (a *Auth) factorMethods(id UserID) ([]string, error) {
+	var out []string
+	err := a.db.View(func(tx *bolt.Tx) error {
+		var err error
+		if out, err = enrolledTx(tx, id); err != nil || len(out) == 0 {
+			return err
+		}
+		left, err := a.hasRecovery(tx, id)
+		if left {
+			out = append(out, MethodRecoveryCode)
+		}
+		return err
+	})
+	return out, err
 }
 
 // enrolled returns the second methods the user has a credential for:
@@ -526,6 +544,8 @@ func (a *Auth) Prove(ctx context.Context, token string, p Proof) (Flow, error) {
 		return a.proveCode(ctx, token, hash, rec, v, s.method, s.value)
 	case MethodTOTP:
 		return a.proveTOTP(ctx, token, hash, rec, v, s.value)
+	case MethodRecoveryCode:
+		return a.proveRecovery(ctx, token, hash, rec, v, s.value)
 	}
 	return a.flowOut(token, rec, v), ErrMethodUnavailable
 }

@@ -50,6 +50,7 @@ func (a *Auth) Load(carriers ...Carrier) func(http.Handler) http.Handler {
 			ctx = withSession(ctx, nil)
 			ctx = context.WithValue(ctx, carriedKey{}, (*Session)(nil))
 			ctx = context.WithValue(ctx, flowTokenKey{}, "")
+			ctx = context.WithValue(ctx, deviceTokenKey{}, "")
 			if cookie {
 				bearer := hasBearer(r)
 				if !bearer {
@@ -67,6 +68,9 @@ func (a *Auth) Load(carriers ...Carrier) func(http.Handler) http.Handler {
 				}
 				if c, err := r.Cookie(cookieName("flow", a.cfg.AuthCookieInsecure())); !bearer && err == nil && c.Value != "" {
 					ctx = context.WithValue(ctx, flowTokenKey{}, c.Value)
+				}
+				if c, err := r.Cookie(cookieName("device", a.cfg.AuthCookieInsecure())); !bearer && err == nil && c.Value != "" {
+					ctx = context.WithValue(ctx, deviceTokenKey{}, c.Value)
 				}
 			}
 			// The bearer carrier arrives with M3.1; until then no bearer

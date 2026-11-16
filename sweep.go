@@ -15,7 +15,7 @@ import (
 // Sweep removes what has expired: flows past their lifetime, links and
 // invitations past theirs, sessions that ended or are no longer live, with
 // their indexes, and throttle counters that would start again from zero
-// (§8). Devices and refresh tokens join with their milestones. The app schedules it; hourly is enough.
+// (§8), and devices past theirs. Refresh tokens join with M3. The app schedules it; hourly is enough.
 // It runs in one write transaction, which other writes wait for; Scan
 // hands it copies of keys and values, so deleting after is safe.
 func (a *Auth) Sweep(ctx context.Context) error {
@@ -25,6 +25,7 @@ func (a *Auth) Sweep(ctx context.Context) error {
 		}
 		now := a.now().UnixNano()
 		var flows, sessions, counters, links [][]byte
+		var devices []*storepb.Device
 		err := store.Scan(tx, store.Flows, nil, func(k, v []byte) error {
 			var rec storepb.Flow
 			if err := proto.Unmarshal(v, &rec); err != nil {
@@ -45,6 +46,19 @@ func (a *Auth) Sweep(ctx context.Context) error {
 			}
 			if now >= rec.Expires {
 				links = append(links, k)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		err = store.Scan(tx, store.Devices, nil, func(_, v []byte) error {
+			d := new(storepb.Device)
+			if err := proto.Unmarshal(v, d); err != nil {
+				return err
+			}
+			if now >= d.Expires {
+				devices = append(devices, d)
 			}
 			return nil
 		})
@@ -111,6 +125,11 @@ func (a *Auth) Sweep(ctx context.Context) error {
 				return err
 			}
 			if err := store.Delete(tx, store.Sessions, k); err != nil {
+				return err
+			}
+		}
+		for _, d := range devices {
+			if err := deleteDevice(tx, d); err != nil {
 				return err
 			}
 		}

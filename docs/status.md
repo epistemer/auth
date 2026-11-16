@@ -3,6 +3,28 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-15: devices (M2.3)
+
+- PR #9 (M2.2) is green but blocked: the ruleset "CI check" requires
+  `Go 1.26.x (ubuntu-latest)` from app 1236702, while CI runs on GitHub
+  Actions (app 15368), so the required check never arrives. **Waiting on
+  you:** set the required check's source to GitHub Actions (or any source).
+  M2.3 is stacked on M2.2's branch meanwhile; I didn't use `--admin` to
+  bypass your rule.
+- **Landed** (PR #10, on top of #9): registered devices (§5.7).
+  - `RememberDevice` registers the device in a sign-in or step-up that
+    proved a second method, and sends `MsgNewDevice`. The cookie carrier
+    keeps the token in `__Host-device`.
+  - A registered device of the user stands for the second proof when the
+    policy has `TrustDevices`; its token is replaced at the `Finish` of the
+    sign-in that used it, not before.
+  - `Devices` and `ForgetDevice`; a recovery or a password change forgets
+    them all; `Sweep` removes expired ones.
+  - A request with the user's device is throttled by the pair's counter
+    alone (§5.8.6), the last of §7's throttling tests.
+- **Decided:** amendment A12.
+- **Next:** M3.1, the access token.
+
 ## 2026-11-15: links, recovery and invitations (M2.2)
 
 - PR #8 (M2.1) merged on green. `main` now has a ruleset requiring

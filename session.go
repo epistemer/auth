@@ -190,10 +190,24 @@ type Result struct {
 	Device        string   // bearer: the device's token, new or replaced
 	RecoveryCodes []string // shown once, when the first second factor was enrolled
 
-	cookie   string // the cookie carrier's session token
-	remember bool
-	expires  time.Time
-	insecure bool
+	cookie        string // the cookie carrier's session token
+	remember      bool
+	expires       time.Time
+	insecure      bool
+	device        string // the cookie carrier's device token, new or replaced
+	deviceExpires time.Time
+}
+
+// withDevice puts a device token in the result, for its carrier.
+func (r *Result) withDevice(token string, expires int64) {
+	if token == "" {
+		return
+	}
+	if r.cookie != "" {
+		r.device, r.deviceExpires = token, time.Unix(0, expires)
+	} else {
+		r.Device = token
+	}
 }
 
 func (a *Auth) result(s *storepb.Session, token string) Result {
@@ -217,6 +231,9 @@ func (r Result) Write(w http.ResponseWriter) {
 			c.Expires = r.expires
 		}
 		http.SetCookie(w, c)
+	}
+	if r.device != "" {
+		http.SetCookie(w, deviceCookie(r.device, r.deviceExpires, r.insecure))
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: cookieName("flow", r.insecure), Value: "", Path: "/", MaxAge: -1,

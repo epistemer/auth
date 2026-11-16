@@ -40,6 +40,26 @@ type subject struct {
 	device bool
 }
 
+// subjectFor is subjectOf, with the flow's device if it is still a live
+// device of its user, presented with its current token, and the user's
+// policy trusts devices (§5.8.6). A device the policy doesn't trust buys no
+// exemption from the user's counter (review 0010).
+func (a *Auth) subjectFor(ctx context.Context, rec *storepb.Flow) (subject, error) {
+	s := subjectOf(ctx, rec)
+	if rec.DeviceId == "" {
+		return s, nil
+	}
+	u, err := a.user(ctx, UserID(rec.UserId))
+	if err != nil {
+		return s, err
+	}
+	if !a.policy(ctx, u).TrustDevices {
+		return s, nil
+	}
+	s.device, err = a.deviceOK(rec)
+	return s, err
+}
+
 // subjectOf returns whom an attempt at rec's flow is counted against.
 func subjectOf(ctx context.Context, rec *storepb.Flow) subject {
 	s := subject{addr: throttleAddr(clientFrom(ctx).Addr)}

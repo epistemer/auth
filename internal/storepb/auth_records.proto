@@ -93,6 +93,9 @@ message Flow {
   bytes pending = 13;        // Enroll: the sealed credential awaiting proof
   map<string, bytes> method_state = 14;
   bool no_user = 15; // the login didn't resolve; kept to answer alike
+  // The SHA-256 of the device token the request presented, so a token
+  // replaced since verifies nothing (review 0010).
+  bytes device_token = 16;
 }
 
 // Credential is the value of credentials/<user>\x00<method>\x00sha256(key).

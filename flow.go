@@ -136,8 +136,8 @@ func NewPassword(pw string) FinishOption { return func(o *finishOptions) { o.new
 func Remember() FinishOption { return func(o *finishOptions) { o.remember = true } }
 
 // RememberDevice registers the device in a SignIn or StepUp that proved a
-// second method. Devices arrive with milestone M2.3; until then no flow can
-// prove a second method, and the option registers nothing, as §5.7.5 says.
+// second method (§5.7.5); in any other flow it does nothing. Result carries
+// its token, which the cookie carrier keeps in a cookie of its own.
 func RememberDevice(label string) FinishOption {
 	return func(o *finishOptions) { o.device = &label }
 }
@@ -169,6 +169,23 @@ func (a *Auth) SignIn(ctx context.Context, login string, c Carrier, opts ...Star
 		return Flow{}, err
 	}
 	rec.Carrier = c.c
+	// A registered device of this user may stand for the second proof
+	// (§5.7.1). A token that isn't one changes nothing and says nothing.
+	token := o.device
+	if token == "" && c.c == storepb.Carrier_CARRIER_COOKIE {
+		token = deviceFromCookie(ctx)
+	}
+	if token != "" {
+		if err := a.db.View(func(tx *bolt.Tx) error {
+			d, err := a.findDevice(tx, token, UserID(rec.UserId))
+			if d != nil {
+				rec.DeviceId, rec.DeviceToken = d.Id, d.TokenHash
+			}
+			return err
+		}); err != nil {
+			return Flow{}, err
+		}
+	}
 	return a.start(ctx, rec)
 }
 
@@ -266,6 +283,11 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 			return view{}, err
 		}
 		verified := a.twoFactors(proofs)
+		if !verified && pol.TrustDevices {
+			if verified, err = a.deviceOK(rec); err != nil {
+				return view{}, err
+			}
+		}
 		v := view{verified: verified, ready: verified || pol.AllowUnverified}
 		if !verified {
 			seconds = slices.DeleteFunc(seconds, func(m string) bool { return proven(func(p string) bool { return p == m }) })
@@ -491,7 +513,11 @@ func (a *Auth) provePassword(ctx context.Context, token string, hash []byte, rec
 	before := a.flowOut(token, rec, v)
 	// Counted before it is checked; a refused attempt does no hashing
 	// (§5.8.3, §5.8.4).
-	at, err := a.count(subjectOf(ctx, rec))
+	sub, err := a.subjectFor(ctx, rec)
+	if err != nil {
+		return before, err
+	}
+	at, err := a.count(sub)
 	if err != nil {
 		if errors.Is(err, ErrTooManyAttempts) {
 			a.record(ctx, Event{Kind: "proof.refused", User: UserID(rec.UserId), Session: SessionID(rec.SessionId), Method: MethodPassword, Reason: "throttled"})
@@ -601,7 +627,7 @@ func (a *Auth) Finish(ctx context.Context, token string, opts ...FinishOption) (
 	case PurposeSignIn:
 		return a.finishSignIn(ctx, hash, rec, o)
 	case PurposeStepUp:
-		return a.finishStepUp(ctx, hash, rec)
+		return a.finishStepUp(ctx, hash, rec, o)
 	case PurposeRecover, PurposeAccept:
 		return a.finishPassword(ctx, hash, rec, o)
 	}
@@ -628,6 +654,7 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 	if err != nil {
 		return Result{}, err
 	}
+	pol := a.policy(ctx, u)
 	now := a.now()
 	token, tokenHash := secrets.NewToken()
 	sess := &storepb.Session{
@@ -637,6 +664,9 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		Client: clientRecord(clientFrom(ctx)), Claims: claims,
 	}
 	var ended *Session
+	var device string
+	var deviceExpires int64
+	var added bool
 	err = a.db.Update(func(tx *bolt.Tx) error {
 		// The flow is spent here, in the transaction that makes the
 		// session: of two concurrent Finishes only one finds it.
@@ -645,6 +675,45 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 			return err
 		}
 		sess.Factors = proofs
+		device, deviceExpires, added = "", 0, false
+		// The device the flow used, if it still is one: its token is
+		// replaced now, and only now (§5.7.5). A session verified by it
+		// needs it still registered.
+		d, err := a.flowDevice(tx, rec)
+		if err != nil {
+			return err
+		}
+		two := a.twoFactors(proofs)
+		used := d != nil && !two && pol.TrustDevices
+		if sess.Verified && !two && !used {
+			// The device went since the view: verified no more.
+			if !pol.AllowUnverified {
+				return errChanged
+			}
+			sess.Verified = false
+		}
+		switch {
+		case used:
+			// A sign-in that used the device replaces its token.
+			if device, err = a.rotateDevice(tx, d); err != nil {
+				return err
+			}
+			sess.DeviceId, deviceExpires = d.Id, d.Expires
+		case o.device != nil && two && d != nil:
+			// Remembered again: the same device, a new token and label.
+			d.Label = *o.device
+			if device, err = a.rotateDevice(tx, d); err != nil {
+				return err
+			}
+			sess.DeviceId, deviceExpires = d.Id, d.Expires
+		case o.device != nil && two:
+			// Registered only by a flow that proved a second method.
+			t, nd, err := a.registerDevice(tx, u.ID, *o.device)
+			if err != nil {
+				return err
+			}
+			device, added, sess.DeviceId, deviceExpires = t, true, nd.Id, nd.Expires
+		}
 		// A sign-in never continues the session the request carries: that
 		// one ends, whoever it belonged to (§5.6.3).
 		ended = nil
@@ -671,7 +740,13 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		a.record(ctx, Event{Kind: "session.ended", User: ended.User, Session: ended.ID, Reason: "signed_in_again"})
 	}
 	a.record(ctx, Event{Kind: "session.created", User: u.ID, Session: SessionID(sess.Id), Reason: verifiedWord(sess.Verified)})
-	return a.result(sess, token), nil
+	if added {
+		a.record(ctx, Event{Kind: "device.added", User: u.ID, Session: SessionID(sess.Id)})
+		a.notify(ctx, u, MsgNewDevice)
+	}
+	r := a.result(sess, token)
+	r.withDevice(device, deviceExpires)
+	return r, nil
 }
 
 func verifiedWord(v bool) string {
@@ -683,7 +758,7 @@ func verifiedWord(v bool) string {
 
 // finishStepUp upgrades the bound session in place: its new proofs, its
 // status, a new token and a higher generation (§5.6.3, §5.7.7).
-func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow) (Result, error) {
+func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow, o finishOptions) (Result, error) {
 	cur, ok := From(ctx)
 	if !ok {
 		return Result{}, ErrNoSession
@@ -713,6 +788,9 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow)
 	}
 	token, tokenHash := secrets.NewToken()
 	sess := new(storepb.Session)
+	var device string
+	var deviceExpires int64
+	var added bool
 	err = a.db.Update(func(tx *bolt.Tx) error {
 		proofs, err := a.spend(tx, hash)
 		if err != nil {
@@ -732,6 +810,20 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow)
 		sess.Generation++
 		sess.Factors = append(sess.Factors, proofs...)
 		sess.Claims = claims
+		device, deviceExpires, added = "", 0, false
+		// Registered only when this step-up itself proved a second
+		// method, and the session has no live device already.
+		cur, err := a.liveDevice(tx, sess.DeviceId, u.ID)
+		if err != nil {
+			return err
+		}
+		if o.device != nil && cur == nil && slices.ContainsFunc(proofs, func(p *storepb.Factor) bool { return isSecond(p.Method) }) && a.twoFactors(sess.Factors) {
+			t, nd, err := a.registerDevice(tx, u.ID, *o.device)
+			if err != nil {
+				return err
+			}
+			device, added, sess.DeviceId, deviceExpires = t, true, nd.Id, nd.Expires
+		}
 		return putSession(tx, sess)
 	})
 	switch {
@@ -745,7 +837,13 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow)
 		return Result{}, err
 	}
 	a.record(ctx, Event{Kind: "session.upgraded", User: u.ID, Session: SessionID(sess.Id), Reason: verifiedWord(sess.Verified)})
-	return a.result(sess, token), nil
+	if added {
+		a.record(ctx, Event{Kind: "device.added", User: u.ID, Session: SessionID(sess.Id)})
+		a.notify(ctx, u, MsgNewDevice)
+	}
+	r := a.result(sess, token)
+	r.withDevice(device, deviceExpires)
+	return r, nil
 }
 
 var (

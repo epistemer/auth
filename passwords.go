@@ -160,6 +160,11 @@ func (a *Auth) storePasswordTx(tx *bolt.Tx, id UserID, phc, rehashOf string) (re
 			return false, nil, err
 		}
 	}
+	// Any new password forgets the user's devices (§5.1.10), the first one
+	// too: a device registered without a password goes with it.
+	if _, err := forgetDevices(tx, id); err != nil {
+		return false, nil, err
+	}
 	return replaced, ended, store.Put(tx, store.Credentials, passwordKey(id), c)
 }
 

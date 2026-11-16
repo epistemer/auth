@@ -80,7 +80,7 @@
 |---|----|------|-----------|
 | ☑ | M2.1 | Codes (§5.3): `Challenge`, the code proofs, codes as the second proof (§5.7.2) | §7's code tests pass, and its enumeration test for `Challenge` |
 | ☑ | M2.2 | Links and `Follow` (§5.3.6), `Recover`, `Invite` and `Accept`, with the notice messages | A recovery with a second factor enrolled doesn't finish on the emailed proof alone; §7's `Follow` tests and its enumeration test for `Recover` pass |
-| ☐ | M2.3 | Devices and verified sessions (§5.7): `RememberDevice`, `Device`, `Devices`, `ForgetDevice`, policies | §7's device tests pass, and its throttling test for a registered device |
+| ☑ | M2.3 | Devices and verified sessions (§5.7): `RememberDevice`, `Device`, `Devices`, `ForgetDevice`, policies | §7's device tests pass, and its throttling test for a registered device |
 
 ## M3 — Bearer
 

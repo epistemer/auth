@@ -2,12 +2,10 @@ module github.com/epistemer/auth/authschema
 
 go 1.26.0
 
-replace github.com/epistemer/auth => ../
-
 tool github.com/epistemer/cfgx/cmd/cfgx
 
 require (
-	github.com/epistemer/auth v0.0.0-00010101000000-000000000000
+	github.com/epistemer/auth v0.1.0
 	github.com/epistemer/cfgx v0.2.0
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/bbolt v1.5.0

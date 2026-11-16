@@ -10,7 +10,7 @@ replace (
 tool github.com/epistemer/cfgx/cmd/cfgx
 
 require (
-	github.com/epistemer/auth v0.0.0-20261116012024-e2d8b21fccda
+	github.com/epistemer/auth v0.1.0
 	github.com/epistemer/auth/authschema v0.0.0-20261116012024-e2d8b21fccda
 	github.com/epistemer/cfgx v0.2.0
 	github.com/epistemer/errors v0.1.0

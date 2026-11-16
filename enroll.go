@@ -48,7 +48,7 @@ var whileHashing func()
 
 // enrollable are the methods Enroll can add, by the milestone that adds
 // them. Modules' methods join when their storage does (after v0.1.0).
-var enrollable = map[string]bool{MethodPassword: true, MethodTOTP: true}
+var enrollable = map[string]bool{MethodPassword: true, MethodTOTP: true, MethodRecoveryCode: true}
 
 // Enroll starts a flow that adds a factor, or changes the password, for the
 // session's user. It needs a verified session and a proof made within
@@ -68,6 +68,16 @@ func (a *Auth) Enroll(ctx context.Context, s *Session, method string) (Flow, err
 	if err := a.mayChange(sess, u); err != nil {
 		a.record(ctx, Event{Kind: "factor.refused", User: u.ID, Session: s.ID, Method: method, Reason: reasonOf(err)})
 		return Flow{}, err
+	}
+	// A new set of recovery codes needs a factor they go with.
+	if method == MethodRecoveryCode {
+		if f, err := a.enrolled(u.ID); err != nil || len(f) == 0 {
+			if err != nil {
+				return Flow{}, err
+			}
+			a.record(ctx, Event{Kind: "factor.refused", User: u.ID, Session: s.ID, Method: method, Reason: "no_factor"})
+			return Flow{}, ErrMethodUnavailable
+		}
 	}
 	return a.start(ctx, &storepb.Flow{
 		Purpose: int32(PurposeEnroll), UserId: sess.UserId, SessionId: sess.Id,
@@ -165,7 +175,7 @@ func (a *Auth) finishEnroll(ctx context.Context, hash []byte, rec *storepb.Flow,
 	switch rec.EnrollMethod {
 	case MethodPassword:
 		return a.changePassword(ctx, hash, sess, u, o)
-	case MethodTOTP:
+	case MethodTOTP, MethodRecoveryCode:
 		return a.addFactor(ctx, hash, sess, u)
 	}
 	return Result{}, fmt.Errorf("auth: enrolling %q: %w", rec.EnrollMethod, ErrMethodUnavailable)
@@ -243,7 +253,9 @@ func (a *Auth) changePassword(ctx context.Context, hash []byte, sess *storepb.Se
 func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session, u User) (Result, error) {
 	out := new(storepb.Session)
 	var method string
+	var codes []string
 	err := a.db.Update(func(tx *bolt.Tx) error {
+		codes = nil
 		if err := store.Get(tx, store.Sessions, []byte(sess.Id), out); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return errNoSession
@@ -266,7 +278,29 @@ func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session
 		method = cur.EnrollMethod
 		switch method {
 		case MethodTOTP:
-			return a.enrollTOTP(tx, cur)
+			// The first factor brings a set of recovery codes (§5.4.6).
+			before, err := enrolledTx(tx, u.ID)
+			if err != nil {
+				return err
+			}
+			if err := a.enrollTOTP(tx, cur); err != nil {
+				return err
+			}
+			if len(before) == 0 {
+				codes, err = a.newRecoverySet(tx, u.ID)
+			}
+			return err
+		case MethodRecoveryCode:
+			// A new set cancels the old.
+			if f, err := enrolledTx(tx, u.ID); err != nil || len(f) == 0 {
+				if err != nil {
+					return err
+				}
+				return errChanged
+			}
+			var err error
+			codes, err = a.newRecoverySet(tx, u.ID)
+			return err
 		}
 		return errChanged
 	})
@@ -284,7 +318,7 @@ func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session
 	}
 	a.record(ctx, Event{Kind: "factor.added", User: u.ID, Session: SessionID(sess.Id), Method: method})
 	a.notify(ctx, u, MsgFactorAdded)
-	return Result{Session: toSession(out)}, nil
+	return Result{Session: toSession(out), RecoveryCodes: codes}, nil
 }
 
 // Factors returns a user's enrolled second factors.

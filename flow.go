@@ -347,6 +347,21 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 			return view{ready: true}, nil
 		}
 		return view{offers: enrolled}, nil
+	case PurposeEnroll:
+		// Bound to its session, which must still be live, of a user not
+		// disabled (§5.1.12). A new password needs nothing more proved; it
+		// comes at Finish, which checks §5.1.9 again.
+		sess, _, err := a.liveSession(ctx, SessionID(rec.SessionId))
+		if err != nil {
+			return view{}, err
+		}
+		if rec.EnrollMethod == MethodPassword {
+			return view{ready: true, verified: sess.Verified}, nil
+		}
+		if proven(func(m string) bool { return m == rec.EnrollMethod }) {
+			return view{ready: true, verified: sess.Verified}, nil
+		}
+		return view{offers: []string{rec.EnrollMethod}, verified: sess.Verified}, nil
 	case PurposeAccept:
 		// An invitation sets a password, so it is held to the same rule as
 		// a recovery: a user with an enrolled factor must prove it too.
@@ -413,17 +428,26 @@ func (a *Auth) seconds(ctx context.Context, u User) ([]string, error) {
 	return a.addresses(ctx, u)
 }
 
-// enrolled returns the second methods the user has a credential for.
+// enrolled returns the second methods the user has a credential for:
+// their factors. Recovery codes alone are none; they come with a factor.
 func (a *Auth) enrolled(id UserID) ([]string, error) {
 	var out []string
 	err := a.db.View(func(tx *bolt.Tx) error {
-		return store.Scan(tx, store.Credentials, store.Prefix([]byte(id)), func(k, _ []byte) error {
-			method, _, _ := strings.Cut(string(k[len(id)+1:]), "\x00")
-			if isSecond(method) && !slices.Contains(out, method) {
-				out = append(out, method)
-			}
-			return nil
-		})
+		var err error
+		out, err = enrolledTx(tx, id)
+		return err
+	})
+	return out, err
+}
+
+func enrolledTx(tx *bolt.Tx, id UserID) ([]string, error) {
+	var out []string
+	err := store.Scan(tx, store.Credentials, store.Prefix([]byte(id)), func(k, _ []byte) error {
+		method, _, _ := strings.Cut(string(k[len(id)+1:]), "\x00")
+		if isSecond(method) && method != MethodRecoveryCode && !slices.Contains(out, method) {
+			out = append(out, method)
+		}
+		return nil
 	})
 	return out, err
 }
@@ -628,6 +652,8 @@ func (a *Auth) Finish(ctx context.Context, token string, opts ...FinishOption) (
 		return a.finishStepUp(ctx, hash, rec, o)
 	case PurposeRecover, PurposeAccept:
 		return a.finishPassword(ctx, hash, rec, o)
+	case PurposeEnroll:
+		return a.finishEnroll(ctx, hash, rec, o)
 	}
 	return Result{}, fmt.Errorf("auth: a flow with purpose %d", rec.Purpose)
 }

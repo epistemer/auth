@@ -154,9 +154,7 @@ func loginKey(login string) []byte {
 // as for a known one (§5.1.3).
 func (a *Auth) SignIn(ctx context.Context, login string, c Carrier, opts ...StartOption) (Flow, error) {
 	switch c.c {
-	case storepb.Carrier_CARRIER_COOKIE:
-	case storepb.Carrier_CARRIER_BEARER:
-		return Flow{}, fmt.Errorf("auth: the bearer carrier arrives with milestone M3: %w", errors.ErrUnsupported)
+	case storepb.Carrier_CARRIER_COOKIE, storepb.Carrier_CARRIER_BEARER:
 	default:
 		return Flow{}, errors.New("auth: SignIn needs auth.Cookie() or auth.Bearer()")
 	}
@@ -664,7 +662,7 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 		Client: clientRecord(clientFrom(ctx)), Claims: claims,
 	}
 	var ended *Session
-	var device string
+	var device, refresh, access string
 	var deviceExpires int64
 	var added bool
 	err = a.db.Update(func(tx *bolt.Tx) error {
@@ -714,6 +712,15 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 			}
 			device, added, sess.DeviceId, deviceExpires = t, true, nd.Id, nd.Expires
 		}
+		if sess.Carrier == storepb.Carrier_CARRIER_BEARER {
+			if refresh, err = a.issueRefresh(tx, sess); err != nil {
+				return err
+			}
+			// Issued here, so a failure leaves nothing done.
+			if access, err = a.issueAccess(sess); err != nil {
+				return err
+			}
+		}
 		// A sign-in never continues the session the request carries: that
 		// one ends, whoever it belonged to (§5.6.3).
 		ended = nil
@@ -746,6 +753,7 @@ func (a *Auth) finishSignIn(ctx context.Context, hash []byte, rec *storepb.Flow,
 	}
 	r := a.result(sess, token)
 	r.withDevice(device, deviceExpires)
+	r.withBearer(access, refresh)
 	return r, nil
 }
 
@@ -788,7 +796,7 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow,
 	}
 	token, tokenHash := secrets.NewToken()
 	sess := new(storepb.Session)
-	var device string
+	var device, refresh, access string
 	var deviceExpires int64
 	var added bool
 	err = a.db.Update(func(tx *bolt.Tx) error {
@@ -824,6 +832,18 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow,
 			}
 			device, added, sess.DeviceId, deviceExpires = t, true, nd.Id, nd.Expires
 		}
+		// New tokens for the new privilege; the old refresh tokens end.
+		if sess.Carrier == storepb.Carrier_CARRIER_BEARER {
+			if err := endRefresh(tx, sess.Id); err != nil {
+				return err
+			}
+			if refresh, err = a.issueRefresh(tx, sess); err != nil {
+				return err
+			}
+			if access, err = a.issueAccess(sess); err != nil {
+				return err
+			}
+		}
 		return putSession(tx, sess)
 	})
 	switch {
@@ -843,6 +863,7 @@ func (a *Auth) finishStepUp(ctx context.Context, hash []byte, rec *storepb.Flow,
 	}
 	r := a.result(sess, token)
 	r.withDevice(device, deviceExpires)
+	r.withBearer(access, refresh)
 	return r, nil
 }
 

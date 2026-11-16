@@ -39,9 +39,10 @@ var beforeTouch func()
 // Load(Bearer()) never sees a cookie session from a Load(Cookie()) around
 // it.
 func (a *Auth) Load(carriers ...Carrier) func(http.Handler) http.Handler {
-	var cookie bool
+	var cookie, bearerCarrier bool
 	for _, c := range carriers {
 		cookie = cookie || c.c == storepb.Carrier_CARRIER_COOKIE
+		bearerCarrier = bearerCarrier || c.c == storepb.Carrier_CARRIER_BEARER
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,8 +74,13 @@ func (a *Auth) Load(carriers ...Carrier) func(http.Handler) http.Handler {
 					ctx = context.WithValue(ctx, deviceTokenKey{}, c.Value)
 				}
 			}
-			// The bearer carrier arrives with M3.1; until then no bearer
-			// session exists, and such a request has none.
+			// The bearer carrier: an access token, checked as §5.6.6 says.
+			// No cross-origin check: a browser doesn't attach one itself.
+			if bearerCarrier && hasBearer(r) {
+				if s := a.bearerSession(ctx, bearerToken(r.Header.Values("Authorization"))); s != nil {
+					ctx = withSession(ctx, s)
+				}
+			}
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

@@ -23,19 +23,21 @@ var (
 	SessionTokens  = []byte("session_tokens")   // sha256(token) -> id
 	SessionsByUser = []byte("sessions_by_user") // <user>\x00<id> -> empty
 	Refresh        = []byte("refresh")          // sha256(token) -> Refresh
-	Flows          = []byte("flows")            // sha256(token) -> Flow
-	Credentials    = []byte("credentials")      // <user>\x00<method>\x00sha256(<key>) -> Credential
-	CredentialKeys = []byte("credential_keys")  // <method>\x00sha256(<key>) -> <user>
-	Devices        = []byte("devices")          // <id> -> Device
-	DeviceTokens   = []byte("device_tokens")    // sha256(token) -> id
-	DevicesByUser  = []byte("devices_by_user")  // <user>\x00<id> -> empty
-	Links          = []byte("links")            // sha256(token) -> Link
-	Throttle       = []byte("throttle")         // <kind>\x00<key> -> Counter
-	Meta           = []byte("meta")             // "version" -> layout version
+	// <session>\x00hex(sha256(token)) -> empty: a session's refresh tokens
+	RefreshBySession = []byte("refresh_by_session")
+	Flows            = []byte("flows")           // sha256(token) -> Flow
+	Credentials      = []byte("credentials")     // <user>\x00<method>\x00sha256(<key>) -> Credential
+	CredentialKeys   = []byte("credential_keys") // <method>\x00sha256(<key>) -> <user>
+	Devices          = []byte("devices")         // <id> -> Device
+	DeviceTokens     = []byte("device_tokens")   // sha256(token) -> id
+	DevicesByUser    = []byte("devices_by_user") // <user>\x00<id> -> empty
+	Links            = []byte("links")           // sha256(token) -> Link
+	Throttle         = []byte("throttle")        // <kind>\x00<key> -> Counter
+	Meta             = []byte("meta")            // "version" -> layout version
 )
 
 var all = [][]byte{
-	Sessions, SessionTokens, SessionsByUser, Refresh, Flows, Credentials,
+	Sessions, SessionTokens, SessionsByUser, Refresh, RefreshBySession, Flows, Credentials,
 	CredentialKeys, Devices, DeviceTokens, DevicesByUser, Links, Throttle, Meta,
 }
 

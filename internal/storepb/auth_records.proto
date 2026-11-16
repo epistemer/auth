@@ -164,3 +164,10 @@ message Counter {
   // A send counter's sends in the last hour (§5.3.5), oldest first.
   repeated int64 sent = 5;
 }
+
+// AccessGroup is the value of auth_access/groups/<id> (auth/access).
+message AccessGroup {
+  string id = 1;
+  string name = 2;
+  int64 created = 3;
+}

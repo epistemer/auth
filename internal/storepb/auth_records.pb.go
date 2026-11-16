@@ -1167,6 +1167,67 @@ func (x *Counter) GetSent() []int64 {
 	return nil
 }
 
+// AccessGroup is the value of auth_access/groups/<id> (auth/access).
+type AccessGroup struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Created       int64                  `protobuf:"varint,3,opt,name=created,proto3" json:"created,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AccessGroup) Reset() {
+	*x = AccessGroup{}
+	mi := &file_auth_records_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccessGroup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccessGroup) ProtoMessage() {}
+
+func (x *AccessGroup) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_records_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccessGroup.ProtoReflect.Descriptor instead.
+func (*AccessGroup) Descriptor() ([]byte, []int) {
+	return file_auth_records_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *AccessGroup) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AccessGroup) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AccessGroup) GetCreated() int64 {
+	if x != nil {
+		return x.Created
+	}
+	return 0
+}
+
 var File_auth_records_proto protoreflect.FileDescriptor
 
 const file_auth_records_proto_rawDesc = "" +
@@ -1277,7 +1338,11 @@ const file_auth_records_proto_rawDesc = "" +
 	"\x04last\x18\x02 \x01(\x03R\x04last\x12\x14\n" +
 	"\x05until\x18\x03 \x01(\x03R\x05until\x12\x10\n" +
 	"\x03seq\x18\x04 \x01(\x04R\x03seq\x12\x12\n" +
-	"\x04sent\x18\x05 \x03(\x03R\x04sent*J\n" +
+	"\x04sent\x18\x05 \x03(\x03R\x04sent\"K\n" +
+	"\vAccessGroup\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
+	"\acreated\x18\x03 \x01(\x03R\acreated*J\n" +
 	"\aCarrier\x12\x17\n" +
 	"\x13CARRIER_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eCARRIER_COOKIE\x10\x01\x12\x12\n" +
@@ -1296,7 +1361,7 @@ func file_auth_records_proto_rawDescGZIP() []byte {
 }
 
 var file_auth_records_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_auth_records_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_auth_records_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_auth_records_proto_goTypes = []any{
 	(Carrier)(0),         // 0: auth.store.v1.Carrier
 	(*Factor)(nil),       // 1: auth.store.v1.Factor
@@ -1311,7 +1376,8 @@ var file_auth_records_proto_goTypes = []any{
 	(*Device)(nil),       // 10: auth.store.v1.Device
 	(*Link)(nil),         // 11: auth.store.v1.Link
 	(*Counter)(nil),      // 12: auth.store.v1.Counter
-	nil,                  // 13: auth.store.v1.Flow.MethodStateEntry
+	(*AccessGroup)(nil),  // 13: auth.store.v1.AccessGroup
+	nil,                  // 14: auth.store.v1.Flow.MethodStateEntry
 }
 var file_auth_records_proto_depIdxs = []int32{
 	0,  // 0: auth.store.v1.Session.carrier:type_name -> auth.store.v1.Carrier
@@ -1320,7 +1386,7 @@ var file_auth_records_proto_depIdxs = []int32{
 	0,  // 3: auth.store.v1.Flow.carrier:type_name -> auth.store.v1.Carrier
 	1,  // 4: auth.store.v1.Flow.proofs:type_name -> auth.store.v1.Factor
 	5,  // 5: auth.store.v1.Flow.codes:type_name -> auth.store.v1.CodeState
-	13, // 6: auth.store.v1.Flow.method_state:type_name -> auth.store.v1.Flow.MethodStateEntry
+	14, // 6: auth.store.v1.Flow.method_state:type_name -> auth.store.v1.Flow.MethodStateEntry
 	7,  // [7:7] is the sub-list for method output_type
 	7,  // [7:7] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
@@ -1339,7 +1405,7 @@ func file_auth_records_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_records_proto_rawDesc), len(file_auth_records_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

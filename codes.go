@@ -98,7 +98,7 @@ func (a *Auth) challengeCode(ctx context.Context, token string, hash []byte, rec
 	case rec.UserId == "":
 		ev.Reason = "no_user"
 	default:
-		got, err := a.dir.Address(ctx, UserID(rec.UserId), ch)
+		got, err := a.address(ctx, UserID(rec.UserId), ch)
 		switch {
 		case err != nil:
 			ev.Reason = "directory_error"
@@ -315,6 +315,17 @@ func channelKey(addr string) []byte {
 	return s[:]
 }
 
+// address asks the directory where a message on ch reaches a user. An
+// address that folds to nothing is none: it could neither be told apart
+// from another (§5.7.2) nor counted (§5.3.5).
+func (a *Auth) address(ctx context.Context, id UserID, ch Channel) (string, error) {
+	addr, err := a.dir.Address(ctx, id, ch)
+	if err != nil || normalizeAddr(addr) == "" {
+		return "", err
+	}
+	return addr, nil
+}
+
 // normalizeAddr folds an address's case and width, and a phone number's
 // punctuation.
 func normalizeAddr(addr string) string {
@@ -367,6 +378,7 @@ func (a *Auth) proveCode(ctx context.Context, token string, hash []byte, rec *st
 	if err != nil {
 		return before, err
 	}
+	sub.secret = secretCode
 	at, err := a.count(sub)
 	if err != nil {
 		if errors.Is(err, ErrTooManyAttempts) {
@@ -408,6 +420,15 @@ func (a *Auth) proveCode(ctx context.Context, token string, hash []byte, rec *st
 			cs.Burnt, reason = true, "tries"
 		case match && cur.UserId != "":
 			cs.Burnt, channel = true, cs.Channel
+			// A recovery proved by a code cancels the link still on its
+			// way: a mail scanner following it later can't move the flow
+			// to a token of its own (§5.3.6).
+			if Purpose(cur.Purpose) == PurposeRecover && len(cur.LinkHash) > 0 {
+				if err := store.Delete(tx, store.Links, cur.LinkHash); err != nil {
+					return err
+				}
+				cur.LinkHash = nil
+			}
 		default:
 			reason = "bad_code"
 			if cs.Tries == uint32(a.cfg.AuthCodeTries()) {
@@ -459,7 +480,7 @@ func (a *Auth) addresses(ctx context.Context, u User) ([]string, error) {
 	var out []string
 	for _, m := range []string{MethodEmailCode, MethodSMSCode} {
 		ch, _ := codeChannel(m)
-		addr, err := a.dir.Address(ctx, u.ID, ch)
+		addr, err := a.address(ctx, u.ID, ch)
 		if err != nil {
 			return nil, fmt.Errorf("auth: an address: %w", err)
 		}

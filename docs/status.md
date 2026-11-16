@@ -3,6 +3,32 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-16: the security review (M6.3)
+
+- **Landed** (this PR): [review 0019](reviews/0019-m6.3-security.md).
+  Gemini 4 Argon (High) reviewed the whole package, about 739k tokens,
+  ten times a milestone review: it read every source file. Argon (Medium)
+  then checked the fixes, about 112k tokens. Of 14 findings, 11 were
+  accepted. Three were serious:
+  - **A mailbox could stand in for an app.** A code to an address still
+    counted as a second factor after the user enrolled an app. Two ways in:
+    a step-up adding the password to a session that signed in by code, or
+    a sign-in proved before the enrolment and finished after.
+  - **A known password unlocked endless guesses at the app.** Each right
+    password cleared the counters the app's wrong codes had raised, so
+    guessing never met a wait. Each kind of secret now has counters of its
+    own.
+  - **Two races** let a recovery set a password past a factor enrolled
+    meanwhile, or an old password prove a sign-in while it was being
+    changed. Both are checked inside the transactions now.
+- **Decided:** amendment A20 records every behaviour change. Declined: the
+  `code.hourly` lockout, which is the rules' deliberate trade against inbox
+  floods; `SignOut` ending a bearer session; and when the first wait
+  starts.
+- **For you:** nothing new.
+- **Next:** M6.4. Tag v0.1.0 (the core, then `authschema`), write the
+  `auth` skill, and add auth to your global CLAUDE.md.
+
 ## 2026-11-16: docs, examples and the API review (M6.2)
 
 - **Landed** (this PR):

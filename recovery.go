@@ -133,6 +133,7 @@ func (a *Auth) proveRecovery(ctx context.Context, token string, hash []byte, rec
 	if err != nil {
 		return before, err
 	}
+	sub.secret = secretSecond
 	at, err := a.count(sub)
 	if err != nil {
 		if errors.Is(err, ErrTooManyAttempts) {
@@ -160,6 +161,12 @@ func (a *Auth) proveRecovery(ctx context.Context, token string, hash []byte, rec
 		if now >= cur.Expires {
 			return store.ErrNotFound
 		}
+		if stale, err := staleTx(tx, cur); err != nil || stale {
+			if err == nil {
+				err = store.ErrNotFound
+			}
+			return err
+		}
 		// Spent only where it proves something: a user with a factor, a
 		// flow holding no second proof yet. A code isn't burnt on a flow a
 		// racing proof already verified.
@@ -185,11 +192,16 @@ func (a *Auth) proveRecovery(ctx context.Context, token string, hash []byte, rec
 		return store.Put(tx, store.Flows, hash, cur)
 	})
 	if errors.Is(err, store.ErrNotFound) {
+		// The flow went or went stale: no code was tried.
+		if err := a.refund(at); err != nil {
+			return before, err
+		}
 		return before, ErrFlowExpired
 	}
 	if errors.Is(err, errOffered) {
-		// Nothing was tried: the attempt isn't held against anyone.
-		if err := a.succeed(at); err != nil {
+		// Nothing was tried: the attempt isn't held against anyone, and it
+		// clears nothing either.
+		if err := a.refund(at); err != nil {
 			return before, err
 		}
 		return before, ErrMethodUnavailable

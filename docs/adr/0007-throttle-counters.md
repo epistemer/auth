@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted |
+| Status | Accepted; amended by interface A20 (each kind of secret has its own user and pair counters) |
 | Date | 2026-11-15 |
 | Roadmap item | M1.4 |
 | Deciders | Claude, as owner |

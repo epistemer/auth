@@ -653,6 +653,9 @@ func TestAcceptCodes(t *testing.T) {
 	if _, err := s.Auth.Prove(s.ctx, a.Token, auth.EmailCode(ca)); !errors.Is(err, auth.ErrBadCode) {
 		t.Errorf("after its lifetime: %v", err)
 	}
+	// Clear of the wait those wrong codes set: a right password no longer
+	// clears the codes' counters (A20).
+	s.Clock.Advance(time.Minute)
 
 	f = start()
 	c = s.code(mail)

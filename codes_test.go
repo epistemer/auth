@@ -117,11 +117,11 @@ func TestOneAddressOneFactor(t *testing.T) {
 	}
 	ch := channelKey(saraMail)
 	same := []*storepb.Factor{{Method: MethodEmailCode, Channel: ch}, {Method: MethodSMSCode, Channel: ch}}
-	if k.twoFactors(same) {
+	if k.twoFactors(same, nil) {
 		t.Error("two proofs through one address made two factors")
 	}
 	same[1].Channel = channelKey(saraPhone)
-	if !k.twoFactors(same) {
+	if !k.twoFactors(same, nil) {
 		t.Error("two addresses made one factor")
 	}
 }

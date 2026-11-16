@@ -1,12 +1,14 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/epistemer/errors"
@@ -20,11 +22,27 @@ import (
 // against three counters, before the proof is checked: the user's, the
 // client address's and the pair's.
 
-// The kinds of counter, the first part of a throttle key.
+// The kinds of counter, the first part of a throttle key. Each kind of
+// secret has a user's and a pair's counter of its own: passwords; codes
+// sent to an address; authenticator apps and recovery codes. A success
+// clears only its own kind's (review 0019), so a right password can't
+// reset the guesses at a second factor, nor a code from a mailbox the
+// guesses at a password. The address's counter counts every failure.
 const (
-	counterUser = "u"
-	counterAddr = "a"
-	counterPair = "p"
+	counterUser       = "u"
+	counterAddr       = "a"
+	counterPair       = "p"
+	counterUserCode   = "uc"
+	counterPairCode   = "pc"
+	counterUserSecond = "u2"
+	counterPairSecond = "p2"
+)
+
+// The kinds of secret an attempt can be at.
+const (
+	secretPassword = iota
+	secretCode
+	secretSecond
 )
 
 // subject is who an attempt is counted against.
@@ -36,8 +54,22 @@ type subject struct {
 	// when the request has none (§5.8.9).
 	addr netip.Addr
 	// device is set when the request presents a registered device of this
-	// user (§5.8.6). Devices arrive with M2.3.
+	// user (§5.8.6).
 	device bool
+	// secret is the kind of secret the attempt is at, which has its own
+	// user and pair counters.
+	secret int
+}
+
+// kinds returns the user's and the pair's counter kinds for s.
+func (s subject) kinds() (user, pair string) {
+	switch s.secret {
+	case secretCode:
+		return counterUserCode, counterPairCode
+	case secretSecond:
+		return counterUserSecond, counterPairSecond
+	}
+	return counterUser, counterPair
 }
 
 // subjectFor is subjectOf, with the flow's device if it is still a live
@@ -113,12 +145,13 @@ func counterKey(kind string, d []byte) counter {
 // pair's alone for a registered device (§5.8.6); the user's alone without
 // an address, or for a device without one (§5.8.9).
 func (s subject) counters() []counter {
-	user := counterKey(counterUser, s.user)
+	userKind, pairKind := s.kinds()
+	user := counterKey(userKind, s.user)
 	if !s.addr.IsValid() {
 		return []counter{user}
 	}
 	addr := s.addr.As16()
-	pair := counterKey(counterPair, digest("pair", s.user, addr[:]))
+	pair := counterKey(pairKind, digest("pair", s.user, addr[:]))
 	if s.device {
 		return []counter{pair}
 	}
@@ -126,12 +159,14 @@ func (s subject) counters() []counter {
 }
 
 // cleared returns the counters a success clears: the user's and the
-// pair's, whether or not the attempt was counted against them (§5.8.5).
+// pair's of its own kind, whether or not the attempt was counted against
+// them (§5.8.5).
 func (s subject) cleared() []counter {
-	out := []counter{counterKey(counterUser, s.user)}
+	userKind, pairKind := s.kinds()
+	out := []counter{counterKey(userKind, s.user)}
 	if s.addr.IsValid() {
 		addr := s.addr.As16()
-		out = append(out, counterKey(counterPair, digest("pair", s.user, addr[:])))
+		out = append(out, counterKey(pairKind, digest("pair", s.user, addr[:])))
 	}
 	return out
 }
@@ -247,16 +282,26 @@ func (a *Auth) backoff(n uint32) time.Duration {
 // started again since (the window has passed), and the wait shrinks to
 // what the remaining count would have set: a wait this attempt's count
 // set ends, one a failure set stays.
-func (a *Auth) succeed(at *attempt) error {
+func (a *Auth) succeed(at *attempt) error { return a.release(at, true) }
+
+// refund takes back an attempt that tried nothing, on every counter it
+// touched, as succeed does for the address's: it clears nothing.
+func (a *Auth) refund(at *attempt) error { return a.release(at, false) }
+
+func (a *Auth) release(at *attempt, clear bool) error {
 	return a.db.Batch(func(tx *bolt.Tx) error {
 		now := a.now().UnixNano()
-		for _, c := range at.subject.cleared() {
-			if err := store.Delete(tx, store.Throttle, c.key); err != nil {
-				return err
+		var gone [][]byte
+		if clear {
+			for _, c := range at.subject.cleared() {
+				if err := store.Delete(tx, store.Throttle, c.key); err != nil {
+					return err
+				}
+				gone = append(gone, c.key)
 			}
 		}
 		for i, c := range at.counters {
-			if c.kind != counterAddr {
+			if slices.ContainsFunc(gone, func(k []byte) bool { return bytes.Equal(k, c.key) }) {
 				continue
 			}
 			rec := new(storepb.Counter)

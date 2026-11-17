@@ -5,7 +5,7 @@ go 1.26.0
 tool github.com/epistemer/cfgx/cmd/cfgx
 
 require (
-	github.com/epistemer/auth v0.2.0
+	github.com/epistemer/auth v0.3.0
 	github.com/epistemer/cfgx v0.2.0
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/bbolt v1.5.0

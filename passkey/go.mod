@@ -3,7 +3,7 @@ module github.com/epistemer/auth/passkey
 go 1.26.0
 
 require (
-	github.com/epistemer/auth v0.2.0
+	github.com/epistemer/auth v0.3.0
 	github.com/go-webauthn/webauthn v0.18.2
 	google.golang.org/protobuf v1.36.12
 )
@@ -26,7 +26,3 @@ require (
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )
-
-// Until the core's v0.3.0 is tagged (ADR 0004), the module builds against
-// the core beside it.
-replace github.com/epistemer/auth => ../

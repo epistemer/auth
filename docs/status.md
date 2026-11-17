@@ -3,6 +3,19 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-18: v0.3.0 (M8.5)
+
+- **Landed:** the tag `v0.3.0` on main (f14dcb8); `passkey`, `oidc` and
+  `authschema` require it with no `replace`; once that merges, the tags
+  `authschema/v0.3.0`, `passkey/v0.3.0` and `oidc/v0.3.0`, and a copy of
+  the shop with no `replace` is tested against them. The skill
+  `~/.claude/skills/auth/` describes v0.3.0 with a section on providers,
+  and your global CLAUDE.md names the release.
+- **Decided for you:** nothing.
+- **Next:** the roadmap has no milestone after v0.3.0: what interface §9
+  leaves out, as apps ask for it, and v1.0.0, which is yours to call.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: the security review of v0.3.0 (M8.4)
 
 - **Review:** [review 0027](reviews/0027-m8.4-security.md) of everything

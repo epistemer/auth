@@ -128,7 +128,7 @@ new module.
 | ☑ | M7.2 | `auth/passkey` as a nested module on go-webauthn (ADR 0008), with `passkey/passkeytest`; CI runs it in the matrix | §5.13 holds, each rule with a test that fails without it, through `passkeytest`; the §7 passkey tests pass; `go mod graph` of the core shows no WebAuthn module |
 | ☑ | M7.3 | `authschema.Passkey()` and a variadic `Group`; the shop example signs in and enrolls with a passkey; README, CHANGELOG, `docs/api-review.md` for the new identifiers | The example's end-to-end test signs in by passkey alone and is verified; every new exported identifier is checked against the locked section |
 | ☑ | M7.4 | A security review of M7.1–M7.3 by the other model family at its highest effort | Its findings are handled or recorded |
-| ☐ | M7.5 | Tags `v0.2.0`, then `authschema/v0.2.0` and `passkey/v0.2.0` (ADR 0004); the skill and epistemer's global CLAUDE.md updated | A copy of the example with no `replace` builds against the tags and passes its end-to-end test |
+| ☑ | M7.5 | Tags `v0.2.0`, then `authschema/v0.2.0` and `passkey/v0.2.0` (ADR 0004); the skill and epistemer's global CLAUDE.md updated | A copy of the example with no `replace` builds against the tags and passes its end-to-end test |
 
 ## After v0.2.0
 

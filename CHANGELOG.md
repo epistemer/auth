@@ -4,7 +4,12 @@ All notable changes to this module and its nested modules (`authschema`).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v0.2.0] - 2026-11-17
+
+Passkeys: the engine drives methods from modules, and `auth/passkey` is
+the first, as locked by epistemer on 2026-11-17 (amendments A21–A24,
+[docs/interface.md](docs/interface.md) §10). Released with
+`authschema/v0.2.0` and `passkey/v0.2.0`.
 
 ### Added
 
@@ -65,4 +70,5 @@ amendments A1–A20 ([docs/interface.md](docs/interface.md) §10).
 - `authschema`: the cfgx group `auth`, with every key's range.
 - `examples/shop`: a toy shop with web and API sign-in.
 
+[v0.2.0]: https://github.com/epistemer/auth/releases/tag/v0.2.0
 [v0.1.0]: https://github.com/epistemer/auth/releases/tag/v0.1.0

@@ -140,7 +140,7 @@ func (a *Auth) mayChangeTx(tx *bolt.Tx, sess *storepb.Session, user UserID) erro
 	}
 	cutoff := a.now().Add(-a.cfg.AuthFreshWindow()).UnixNano()
 	for _, f := range sess.Factors {
-		if f.At < cutoff {
+		if f.At < cutoff || isIdentity(f.Method) && !f.Verified {
 			continue
 		}
 		if len(enrolled) == 0 || slices.Contains(enrolled, f.Method) || f.Method == MethodRecoveryCode {

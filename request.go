@@ -233,6 +233,12 @@ func Within(d time.Duration) Requirement { return within(d) }
 func (w within) Check(ctx context.Context, s *Session) error {
 	since := nowFrom(ctx).Add(-time.Duration(w))
 	for _, f := range s.Factors {
+		// An identity's proof of one factor shows the provider's session,
+		// which may be weeks old: like a device, it meets no Within
+		// (review 0027).
+		if isIdentity(f.Method) && !f.verified {
+			continue
+		}
 		if !f.At.Before(since) {
 			return nil
 		}

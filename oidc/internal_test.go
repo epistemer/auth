@@ -10,3 +10,23 @@ func TestIdentityKey(t *testing.T) {
 		t.Errorf("key %q", got)
 	}
 }
+
+// Review 0027: http endpoints only beside an http://localhost issuer.
+func TestEndpointOK(t *testing.T) {
+	for _, c := range []struct {
+		issuer, endpoint string
+		ok               bool
+	}{
+		{"http://localhost:9000", "http://localhost:9000/token", true},
+		{"https://localhost:9000", "http://localhost:9000/token", false},
+		{"https://idp.example", "http://localhost/token", false},
+		{"https://idp.example", "https://idp.example/token", true},
+		{"https://idp.example", "https://idp.example/token#x", false},
+		{"https://idp.example", "https://u@idp.example/token", false},
+	} {
+		m := &method{issuer: c.issuer}
+		if got := m.endpointOK(c.endpoint); got != c.ok {
+			t.Errorf("issuer %s, endpoint %s: %v", c.issuer, c.endpoint, got)
+		}
+	}
+}

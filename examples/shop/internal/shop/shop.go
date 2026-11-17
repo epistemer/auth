@@ -66,6 +66,18 @@ func (d *Directory) Create(id auth.Identity) auth.UserID {
 	return uid
 }
 
+// Remove removes a user Create made, when its sign-up didn't finish.
+func (d *Directory) Remove(id auth.UserID) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for login, u := range d.users {
+		if u.ID == id {
+			delete(d.users, login)
+		}
+	}
+	delete(d.emails, id)
+}
+
 // Add adds a user under a login, with an email address or none.
 func (d *Directory) Add(id auth.UserID, login, name, email string) {
 	d.mu.Lock()
@@ -212,10 +224,12 @@ func (s *Shop) Handler() http.Handler {
 	mux.Handle("POST /passkey/enroll", web(a.Require()(http.HandlerFunc(s.passkeyEnroll))))
 	mux.Handle("POST /passkey/enroll/finish", web(a.Require()(http.HandlerFunc(s.passkeyEnrolled))))
 
-	// The provider: the sign-in button's link, and its redirect back. The
+	// The provider: the sign-in button posts here (a POST, so Load's
+	// cross-origin check covers it and no page elsewhere can start flows
+	// or replace the flow cookie), and the provider redirects back. The
 	// callback is a GET that changes state; state binds it to the flow in
 	// the flow cookie, and it goes through Load as every route does.
-	mux.Handle("GET /sign-in/oidc", web(http.HandlerFunc(s.oidcStart)))
+	mux.Handle("POST /sign-in/oidc", web(http.HandlerFunc(s.oidcStart)))
 	mux.Handle("GET /sign-in/oidc/callback", web(http.HandlerFunc(s.oidcCallback)))
 
 	// The API: bearer tokens, no cookies, no cross-origin check. Its
@@ -473,7 +487,8 @@ func (s *Shop) oidcStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.Write(w)
-	http.Redirect(w, r, ch.Options.(string), http.StatusFound)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, ch.Options.(string), http.StatusSeeOther)
 }
 
 // oidcCallback proves the provider's redirect. An identity no user holds
@@ -490,14 +505,19 @@ func (s *Shop) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, err)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	if f.Unlinked != nil {
-		// A real shop shows its sign-up step here: terms, a name.
-		if f, err = s.Auth.Link(ctx, token, s.dir.Create(*f.Unlinked)); err != nil {
+		// A real shop shows its sign-up step here: terms, a name. A user
+		// made for an identity Link then refuses is removed again.
+		id := s.dir.Create(*f.Unlinked)
+		if f, err = s.Auth.Link(ctx, token, id); err != nil {
+			s.dir.Remove(id)
 			fail(w, r, err)
 			return
 		}
 	}
-	s.finish(w, r, f)
+	// A second proof when the policy needs one, as after a password.
+	s.next(w, r, f)
 }
 
 func (s *Shop) signOut(w http.ResponseWriter, r *http.Request) {

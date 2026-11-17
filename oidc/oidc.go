@@ -63,6 +63,7 @@ type Config interface {
 const (
 	lifetime      = 10 * time.Minute // §5.14.1
 	maxQuery      = 8 << 10          // §5.14.3
+	maxCode       = 4 << 10          // a code past it isn't sent to the provider (review 0027)
 	maxBody       = 1 << 20          // §5.14.2
 	httpTimeout   = 10 * time.Second
 	maxAuthAge    = 5 * time.Minute // with two_factors (§5.14.5, §5.14.9)
@@ -171,7 +172,7 @@ func (m *method) endpointOK(s string) bool {
 		return true
 	}
 	iss, _ := url.Parse(m.issuer)
-	return u.Scheme == "http" && u.Hostname() == "localhost" && iss.Hostname() == "localhost"
+	return u.Scheme == "http" && u.Hostname() == "localhost" && iss.Scheme == "http" && iss.Hostname() == "localhost"
 }
 
 // hostOK requires a host name with no space or control character.
@@ -383,7 +384,7 @@ func (m *method) Verify(ctx context.Context, in auth.MethodInput, state []byte, 
 	}
 	_, hasCode := c.query["code"]
 	_, hasErr := c.query["error"]
-	if hasCode == hasErr || hasCode && c.query.Get("code") == "" {
+	if hasCode == hasErr || hasCode && (c.query.Get("code") == "" || len(c.query.Get("code")) > maxCode) {
 		return refuse("malformed")
 	}
 	if !in.Now.Before(time.Unix(0, st.Expires)) {

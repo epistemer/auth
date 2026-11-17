@@ -627,3 +627,34 @@ func TestOutageRefunds(t *testing.T) {
 		t.Errorf("after an outage: %v", err)
 	}
 }
+
+// Review 0027: a key set holding a key go-jose can't read still serves the
+// others; a failed fetch stays the answer through the wait before the
+// next; a code past 4 KiB is refused before the exchange; an https issuer
+// on localhost allows no http endpoint.
+func TestReview0027(t *testing.T) {
+	w := newWorld(t, nil)
+	w.p.oddKey = true
+	if _, err := w.signIn("sub-1"); err != nil {
+		t.Errorf("with an X25519 key in the set: %v", err)
+	}
+
+	w = newWorld(t, nil)
+	w.p.jwksStatus = 503
+	if _, err := w.signIn("sub-1"); err == nil || errors.Is(err, auth.ErrBadCredentials) {
+		t.Errorf("the first fetch failing: %v", err)
+	}
+	w.p.jwksStatus = 0 // up again, but the next fetch isn't due
+	if _, err := w.signIn("sub-1"); err == nil || errors.Is(err, auth.ErrBadCredentials) {
+		t.Errorf("within the wait after a failed fetch: %v", err)
+	}
+
+	w = newWorld(t, nil)
+	f, u := w.start()
+	q := w.p.authorize(t, u, "sub-1")
+	q.Set("code", strings.Repeat("c", 4<<10+1))
+	if _, err := w.k.Auth.Prove(w.ctx, f.Token, oidc.Callback("test", q)); !errors.Is(err, auth.ErrBadCredentials) || w.lastReason("proof.refused") != "malformed" {
+		t.Errorf("a code past 4 KiB: %v", err)
+	}
+
+}

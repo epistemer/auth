@@ -260,7 +260,7 @@ func (a *Auth) challengeModule(ctx context.Context, hash []byte, rec *storepb.Fl
 		// A proof made while Start ran changes what the method should have
 		// been told, the user and their credentials: its options are stale
 		// (review 0023).
-		if capped(cur, name) || len(cur.Proofs) != len(rec.Proofs) || cur.UserId != rec.UserId {
+		if capped(cur, name) || len(cur.Proofs) != len(rec.Proofs) || cur.UserId != rec.UserId || cur.UnlinkedMethod != "" {
 			return errOffered
 		}
 		if cur.MethodState == nil {
@@ -485,7 +485,10 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 			id := res.Unlinked
 			cur.Pending, cur.UnlinkedMethod = b, name
 			cur.Unlinked = &storepb.Identity{Issuer: id.Issuer, Subject: id.Subject, Email: id.Email, EmailVerified: id.EmailVerified}
-			cur.PendingProof = &storepb.Factor{Method: name, Verified: res.Verified, Channel: channelKey(res.Address)}
+			cur.PendingProof = &storepb.Factor{
+				Method: name, At: now, Verified: res.Verified, Channel: channelKey(res.Address),
+				Credential: store.CredKey(res.Credential.Key),
+			}
 			return put()
 		}
 		// (f) The flow's own checks.
@@ -509,6 +512,9 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 		// (g) The proof, and the credential's update or its pending copy.
 		// A proof that shows control of an address came through it (§5.7.2).
 		f := &storepb.Factor{Method: name, At: now, Verified: res.Verified, Channel: channelKey(res.Address)}
+		if !enroll && res.Credential != nil {
+			f.Credential = store.CredKey(res.Credential.Key)
+		}
 		if i := slices.IndexFunc(cur.Proofs, func(p *storepb.Factor) bool { return p.Method == name }); i >= 0 {
 			cur.Proofs[i].At = max(cur.Proofs[i].At, f.At)
 			cur.Proofs[i].Verified = cur.Proofs[i].Verified || f.Verified
@@ -580,8 +586,12 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 	// Clear the counters only of the user the proof named. One counted
 	// against another user (the owner of a device someone else presented)
 	// takes back its count and clears nothing of theirs (review 0021).
+	// A flow that named no user when the attempt was counted (a
+	// SignInWithout) clears no counter either: the device whose pair it
+	// counted on may be the prover's own, whose failures it would wipe
+	// (review 0027).
 	release := a.succeed
-	if !bytes.Equal(sub.user, digest("user", []byte(target))) {
+	if rec.UserId == "" || !bytes.Equal(sub.user, digest("user", []byte(target))) {
 		release = a.refund
 	}
 	if err := release(at); err != nil {

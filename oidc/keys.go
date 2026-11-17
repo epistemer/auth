@@ -28,6 +28,7 @@ type keySet struct {
 	mu       sync.Mutex
 	keys     []jose.JSONWebKey
 	tried    time.Time // the last fetch, whatever its outcome
+	lastErr  error     // its error, kept through the wait before the next
 	inflight *fetchCall
 }
 
@@ -79,8 +80,11 @@ func (s *keySet) refresh(ctx context.Context) error {
 		}
 	}
 	if !s.tried.IsZero() && time.Since(s.tried) < refetchEvery {
+		// A fetch that failed stays the answer until the next is due, so
+		// an outage isn't answered as a bad token meanwhile (review 0027).
+		err := s.lastErr
 		s.mu.Unlock()
-		return nil
+		return err
 	}
 	c := &fetchCall{done: make(chan struct{})}
 	s.inflight, s.tried = c, time.Now()
@@ -91,7 +95,7 @@ func (s *keySet) refresh(ctx context.Context) error {
 	if err == nil {
 		s.keys = keys
 	}
-	c.err, s.inflight = err, nil
+	c.err, s.inflight, s.lastErr = err, nil, err
 	s.mu.Unlock()
 	close(c.done)
 	return err
@@ -110,13 +114,18 @@ func (s *keySet) fetch(ctx context.Context) ([]jose.JSONWebKey, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, errKeys
 	}
-	var set jose.JSONWebKeySet
+	// Key by key: a key of a kind go-jose doesn't read (X25519, oct) is
+	// skipped, not a reason to drop the whole set (RFC 7517 §5, review 0027).
+	var set struct {
+		Keys []json.RawMessage `json:"keys"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
 		return nil, errKeys
 	}
 	var keep []jose.JSONWebKey
-	for _, k := range set.Keys {
-		if usable(k) {
+	for _, raw := range set.Keys {
+		var k jose.JSONWebKey
+		if json.Unmarshal(raw, &k) == nil && usable(k) {
 			keep = append(keep, k)
 		}
 	}

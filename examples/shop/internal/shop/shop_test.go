@@ -484,11 +484,17 @@ func TestOIDC(t *testing.T) {
 	if code, body := w.getJSON(w.browser(), "/sign-in/oidc"); code != http.StatusUnauthorized {
 		t.Errorf("another state: %d %v", code, body)
 	}
+	w.idp.badState = false
+	// The button is a POST: a GET from a page elsewhere starts nothing.
+	if code := w.get(w.browser(), "/sign-in/oidc"); code != http.StatusMethodNotAllowed {
+		t.Errorf("a GET: %d", code)
+	}
 }
 
-// getJSON follows redirects, as a browser does, and decodes the last reply.
+// getJSON posts the sign-in button's form and follows the redirects, as a
+// browser does, and decodes the last reply.
 func (w *world) getJSON(c *http.Client, path string) (int, map[string]any) {
 	w.t.Helper()
-	r, _ := http.NewRequest("GET", w.srv.URL+path, nil)
+	r, _ := http.NewRequest("POST", w.srv.URL+path, nil)
 	return w.do(c, r)
 }

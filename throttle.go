@@ -59,10 +59,18 @@ type subject struct {
 	// secret is the kind of secret the attempt is at, which has its own
 	// user and pair counters.
 	secret int
+	// module is a module method's name: its attempts have counters of
+	// their own kind (§5.5.9). addrOnly counts them toward the address's
+	// counter alone, or a registered device's pair counter (§5.13.11).
+	module   string
+	addrOnly bool
 }
 
 // kinds returns the user's and the pair's counter kinds for s.
 func (s subject) kinds() (user, pair string) {
+	if s.module != "" {
+		return "u:" + s.module, "p:" + s.module
+	}
 	switch s.secret {
 	case secretCode:
 		return counterUserCode, counterPairCode
@@ -95,11 +103,14 @@ func (a *Auth) subjectFor(ctx context.Context, rec *storepb.Flow) (subject, erro
 // subjectOf returns whom an attempt at rec's flow is counted against.
 func subjectOf(ctx context.Context, rec *storepb.Flow) subject {
 	s := subject{addr: throttleAddr(clientFrom(ctx).Addr)}
-	if rec.UserId != "" {
+	switch {
+	case rec.UserId != "":
 		s.user = digest("user", []byte(rec.UserId))
-	} else {
+	case !rec.Without:
 		s.user = digest("login", rec.LoginKey)
 	}
+	// A SignInWithout names no login: it has no user's counter, only the
+	// address's, until a proof names the user.
 	return s
 }
 
@@ -146,6 +157,19 @@ func counterKey(kind string, d []byte) counter {
 // an address, or for a device without one (§5.8.9).
 func (s subject) counters() []counter {
 	userKind, pairKind := s.kinds()
+	if s.user == nil || s.addrOnly {
+		// No user to count against (a SignInWithout before its proof), or
+		// a method with nothing to guess: the address's counter, or the
+		// pair's for a registered device.
+		if !s.addr.IsValid() {
+			return nil
+		}
+		addr := s.addr.As16()
+		if s.device && s.user != nil {
+			return []counter{counterKey(pairKind, digest("pair", s.user, addr[:]))}
+		}
+		return []counter{counterKey(counterAddr, digest("addr", addr[:]))}
+	}
 	user := counterKey(userKind, s.user)
 	if !s.addr.IsValid() {
 		return []counter{user}
@@ -162,6 +186,9 @@ func (s subject) counters() []counter {
 // pair's of its own kind, whether or not the attempt was counted against
 // them (§5.8.5).
 func (s subject) cleared() []counter {
+	if s.user == nil {
+		return nil
+	}
 	userKind, pairKind := s.kinds()
 	out := []counter{counterKey(userKind, s.user)}
 	if s.addr.IsValid() {

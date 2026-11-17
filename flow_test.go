@@ -256,9 +256,10 @@ func TestNewRefusesBadConfig(t *testing.T) {
 	if _, err := New(db, defaults(), &directory{}, &outbox{}, WithFirst("telepathy")); err == nil {
 		t.Error("an unknown first method was accepted")
 	}
-	// A module's method is refused until the engine drives modules (v0.2.0).
-	if _, err := New(db, defaults(), &directory{}, &outbox{}, WithMethods(stubMethod{})); err == nil {
-		t.Error("a module's method was accepted")
+	// A module's method is accepted since v0.2.0 (A21); TestNewMethods has
+	// what New refuses.
+	if _, err := New(db, defaults(), &directory{}, &outbox{}, WithMethods(stubMethod{})); err != nil {
+		t.Errorf("a module's method: %v", err)
 	}
 }
 

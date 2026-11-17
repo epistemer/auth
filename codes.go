@@ -74,6 +74,9 @@ func (a *Auth) Challenge(ctx context.Context, token, method string) (Challenge, 
 	if !slices.Contains(v.offers, method) || method == MethodEmailLink && Purpose(rec.Purpose) != PurposeRecover {
 		return Challenge{}, ErrMethodUnavailable
 	}
+	if m := a.methods[method]; m != nil {
+		return a.challengeModule(ctx, hash, rec, m)
+	}
 	if method == MethodTOTP && Purpose(rec.Purpose) == PurposeEnroll && rec.EnrollMethod == MethodTOTP {
 		return a.challengeTOTP(ctx, hash, rec)
 	}

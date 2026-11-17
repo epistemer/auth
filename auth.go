@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"reflect"
+	"regexp"
 	"time"
 
 	"github.com/epistemer/cfgx"
@@ -166,6 +168,7 @@ type Auth struct {
 	policy     func(ctx context.Context, u User) Policy
 	first      []string
 	methods    map[string]Method
+	modules    []Method // as WithMethods gave them, checked by New
 	clientAddr func(r *http.Request) netip.Addr
 	reject     func(w http.ResponseWriter, r *http.Request, err error)
 	now        func() time.Time
@@ -192,15 +195,11 @@ func WithFirst(methods ...string) Option {
 	return func(a *Auth) { a.first = append([]string(nil), methods...) }
 }
 
-// WithMethods adds methods from modules. The engine drives them from
-// v0.2.0, with auth/passkey; until then New refuses any, so that no flow
-// offers a method it can't prove.
+// WithMethods adds methods from modules, such as auth/passkey's. New
+// refuses a nil method, two of one name, one named like a built-in method,
+// and a name outside [a-z0-9_]{1,32}.
 func WithMethods(ms ...Method) Option {
-	return func(a *Auth) {
-		for _, m := range ms {
-			a.methods[m.Name()] = m
-		}
-	}
+	return func(a *Auth) { a.modules = append(a.modules, ms...) }
 }
 
 // WithClientAddr tells Load how to read the client's address from a
@@ -234,6 +233,26 @@ func clientFrom(ctx context.Context) Client {
 // builtIn are the methods the core implements, by the milestone that adds
 // them. A method named in WithFirst must be one of these or a module's.
 var builtIn = map[string]bool{MethodPassword: true, MethodEmailCode: true, MethodSMSCode: true}
+
+// coreMethods are every name the core gives a method of its own, which no
+// module's method may take.
+var coreMethods = map[string]bool{
+	MethodPassword: true, MethodEmailCode: true, MethodSMSCode: true, MethodEmailLink: true,
+	MethodTOTP: true, MethodRecoveryCode: true, methodInvitation: true,
+}
+
+var methodNameRE = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
+
+// isNil reports whether an interface holds a nil pointer, map, func, chan
+// or slice.
+func isNil(v any) bool {
+	r := reflect.ValueOf(v)
+	switch r.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Func, reflect.Chan, reflect.Slice, reflect.Interface:
+		return r.IsNil()
+	}
+	return false
+}
 
 // New returns an Auth over db. It refuses a master secret shorter than 32
 // bytes and a config whose values fall outside interface §4.8's ranges.
@@ -275,8 +294,20 @@ func New(db *bolt.DB, cfg Config, dir Directory, sender Sender, opts ...Option) 
 	for _, o := range opts {
 		o(a)
 	}
-	if len(a.methods) > 0 {
-		return nil, errors.New("auth: methods from modules aren't driven before v0.2.0")
+	for _, m := range a.modules {
+		if m == nil || isNil(m) {
+			return nil, errors.New("auth: WithMethods got a nil method")
+		}
+		name := m.Name()
+		switch {
+		case !methodNameRE.MatchString(name):
+			return nil, fmt.Errorf("auth: a method's name %q isn't [a-z0-9_]{1,32}", name)
+		case coreMethods[name]:
+			return nil, fmt.Errorf("auth: a module's method is named %q, like a built-in one", name)
+		case a.methods[name] != nil:
+			return nil, fmt.Errorf("auth: two methods are named %q", name)
+		}
+		a.methods[name] = m
 	}
 	if len(a.first) == 0 {
 		return nil, errors.New("auth: WithFirst names no method")

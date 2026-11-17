@@ -245,3 +245,44 @@ func deviceCookie(token string, expires time.Time, insecure bool) *http.Cookie {
 		Secure: !insecure, HttpOnly: true, SameSite: http.SameSiteLaxMode,
 	}
 }
+
+// anyDevice finds a live device by its token, whoever's it is: for a
+// SignInWithout, which knows no user until a proof names one.
+func (a *Auth) anyDevice(tx *bolt.Tx, token string) (*storepb.Device, error) {
+	h := secrets.Hash(token)
+	id := store.B(tx, store.DeviceTokens).Get(h)
+	if id == nil {
+		return nil, nil
+	}
+	d := new(storepb.Device)
+	if err := store.Get(tx, store.Devices, id, d); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if a.now().UnixNano() >= d.Expires || !bytes.Equal(d.TokenHash, h) {
+		return nil, nil
+	}
+	return d, nil
+}
+
+// deviceOwner is the user of the live device a flow presented with its
+// current token, or "".
+func (a *Auth) deviceOwner(rec *storepb.Flow) (UserID, error) {
+	var owner UserID
+	err := a.db.View(func(tx *bolt.Tx) error {
+		d := new(storepb.Device)
+		if err := store.Get(tx, store.Devices, []byte(rec.DeviceId), d); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil
+			}
+			return err
+		}
+		if a.now().UnixNano() < d.Expires && bytes.Equal(d.TokenHash, rec.DeviceToken) {
+			owner = UserID(d.UserId)
+		}
+		return nil
+	})
+	return owner, err
+}

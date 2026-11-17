@@ -3,6 +3,38 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: the engine drives modules (M7.1)
+
+- **Landed:** `New` accepts `WithMethods`; `Challenge` calls a module's
+  `Start` and `Prove` its `Verify` under §5.5's rules 6–11; `Enroll` and
+  `Finish` store a module's credential; `SignInWithout`; a passkey is an
+  enrolled second factor; `FactorLabel` (authenticator apps too),
+  `Refuse`, `MethodPasskey`, `MethodInput.Now`. The engine is
+  `module.go`; `module_test.go` drives it with a fake method, so no real
+  passkey is needed. The core's module graph is unchanged.
+- **Tests:** every new rule has a test that fails without it: 53
+  mutations of the new code, each caught. The whole suite passes under
+  `-race`, and so do authschema and the shop example.
+- **Review:** [review 0021](reviews/0021-m7.1-engine.md). Argon is still
+  out (about 110 hours), so Gemini 4 Hydrogen (XHigh) reviewed (about
+  345k tokens) and Hydrogen (High) checked the fixes (about 550k, with
+  the session's context). Ten findings: five fixed, one fixed in part,
+  one documented, three declined.
+- **Decided for you:** where A21 was silent, amendment A22: a proof
+  that loses a race for its state has its count taken back; a
+  `SignInWithout` counts toward the address (or a trusted device's pair)
+  until the proof names the user, so it must only serve methods with
+  nothing to guess; a factor whose module isn't given is offered nowhere
+  and still keeps address codes from counting; a method told no user must
+  name one; the limit's reason is `limit`; labels are cleaned whoever
+  gives them.
+- **For you, when you next look at the API:** `SignInWithout` takes no
+  `StartOption`, as locked, so a bearer client can't present its stored
+  device to it (the cookie carrier reads its own). Adding
+  `opts ...StartOption` would be compatible. Nothing waits on it.
+- **Next:** M7.2, the `auth/passkey` module on go-webauthn.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: passkeys locked (M7.0 done)
 
 - **Landed:** you locked the passkey section with every default. It is

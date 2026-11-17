@@ -26,6 +26,8 @@ message Factor {
   // proofs through one address count as one (interface §5.7.2). It is the
   // SHA-256 of the normalized address, never the address.
   bytes channel = 3;
+  // A module's proof that counts as two factors on its own (§5.5.1).
+  bool verified = 4;
 }
 
 // Client is the client as seen when a record was made.
@@ -93,12 +95,18 @@ message Flow {
   repeated CodeState codes = 10;
   bytes link_hash = 11;      // Recover and Accept: the link or invitation
   string enroll_method = 12; // Enroll: the method being added
-  bytes pending = 13;        // Enroll: the sealed credential awaiting proof
+  bytes pending = 13;        // Enroll: TOTP's sealed secret, or a module's Credential, awaiting Finish
   map<string, bytes> method_state = 14;
   bool no_user = 15; // the login didn't resolve; kept to answer alike
   // The SHA-256 of the device token the request presented, so a token
   // replaced since verifies nothing (review 0010).
   bytes device_token = 16;
+  // SignInWithout: the flow names no login; a module's proof names the user.
+  bool without = 17;
+  // A module method's Challenges and refused proofs in this flow, by method
+  // (§5.5.9).
+  map<string, uint32> challenges = 18;
+  map<string, uint32> refusals = 19;
 }
 
 // Credential is the value of credentials/<user>\x00<method>\x00sha256(key).

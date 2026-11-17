@@ -4,6 +4,25 @@ All notable changes to this module and its nested modules (`authschema`).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Methods from modules are driven (amendments A21, A22): `New` accepts
+  `WithMethods`, `Challenge` calls a method's `Start`, `Prove` its
+  `Verify`, and `Enroll` and `Finish` store its credentials.
+- `SignInWithout`, a sign-in that names no login, for a method that finds
+  the user from its proof.
+- `MethodPasskey`: a passkey is an enrolled second factor.
+- `FactorLabel`, the label of the factor an `Enroll` adds, for
+  authenticator apps too.
+- `Refuse`, for a module's `Verify` to refuse a proof with a reason.
+- `MethodInput.Now`, the engine's clock.
+
+### Changed
+
+- `New` no longer refuses `WithMethods` (A19's refusal is withdrawn).
+
 ## [v0.1.0] - 2026-11-16
 
 The first release: the whole of the interface locked on 2026-11-14, with

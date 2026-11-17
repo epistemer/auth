@@ -18,6 +18,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - The nested module `github.com/epistemer/auth/oidc`: signing in with an
   OpenID Connect provider (authorization code with PKCE) on go-oidc and
   x/oauth2, with `oidc.New` and `oidc.Callback` (amendments A25, A27).
+- `authschema.OIDC()`, the group of one provider's keys.
+- `examples/shop` signs in through a provider, signing up new customers.
+
+### Changed
+
+- `examples/shop`: `shop.New` takes the shop's own `*Directory`, which
+  creates the users a provider signs up.
 
 ### Changed
 

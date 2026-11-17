@@ -188,3 +188,38 @@ of the declarations, then each by hand. Nothing else exported changed.
 
 None. The declarations are §4.11's and §4.3's, word for word; the
 passkey module's types from go-webauthn appear nowhere in its API.
+
+# API review for v0.3.0 (M8.3)
+
+Every identifier added since v0.2.0, as `go doc -all` lists them on
+2026-11-17, against what epistemer locked on 2026-11-17 (interface §4.3,
+§4.5, §4.9, §4.12, amendment A25). Nothing else exported changed.
+
+## `auth`
+
+| Identifier | Interface | Checked |
+|---|---|---|
+| `Flow.Unlinked`, `Link` | D42; only in a `SignInWithout` flow; the user new to auth (§5.14.7) | `TestLink`, `TestLinkNotNew`, `TestLinkDuplicate`, `TestLinkRaces`; `oidc` `TestSignInAndLink`; `examples/shop` `TestOIDC` |
+| `Identities`, `IdentityInfo`, `Unlink` | D44; no factor; `Unlink` refuses the last way in | `TestIdentitiesAndUnlink`, `TestUnlinkEdges` |
+| `AddressOnly` | D43; replaces the core's list | `TestAddressOnly`; `passkey`, `oidc` `TestAddressOnly` |
+| `MethodResult.Address` | D45; one mailbox, one factor (§5.7.2) | `TestOneMailboxOneFactor`, `TestLinkEdges` |
+
+## `authschema`
+
+| Identifier | Interface | Checked |
+|---|---|---|
+| `OIDC()` | the group `oidc`: provider, issuer, client_id, client_secret, redirect_url, scopes, two_factors, with pinned getter names | the test app (`oidc.Config`'s getters), `TestRanges`; `examples/shop` `settings_test.go` |
+
+## `auth/oidc`
+
+| Identifier | Interface | Checked |
+|---|---|---|
+| `Config` | D39's seven getters | `examples/shop` `settings_test.go` |
+| `New` | refuses each bad config of §4.12; no network call; method `oidc_<provider>` | `TestNew` |
+| `Callback` | D41; the provider names the method; prints no secret | `TestRefusals`, `TestOnceAndExpiry`, `TestNew` |
+| `Challenge.Options` | D40; the authorization URL, a `string` | `TestSignInAndLink` |
+
+## Findings
+
+None. The declarations are §4.3's, §4.5's, §4.9's and §4.12's, word for
+word; no go-oidc, go-jose or x/oauth2 type appears in the module's API.

@@ -24,13 +24,29 @@ var _ interface {
 	AuthPasskeyOrigins() []string
 } = (*Serve)(nil)
 
+// With authschema.OIDC() nested, it satisfies oidc.Config's getters too
+// (interface §4.12).
+var _ interface {
+	AuthOIDCProvider() string
+	AuthOIDCIssuer() string
+	AuthOIDCClientID() string
+	AuthOIDCClientSecret() cfgx.Secret
+	AuthOIDCRedirectURL() string
+	AuthOIDCScopes() []string
+	AuthOIDCTwoFactors() bool
+} = (*Serve)(nil)
+
 // The passkey keys load from the environment, the origins as a list.
 func TestPasskeyKeys(t *testing.T) {
 	s, err := LoadServe(context.Background(), cfgx.WithEnv(map[string]string{
-		"SHOP_AUTH_ISSUER":          "toyshop",
-		"SHOP_AUTH_SECRET":          "0123456789abcdef0123456789abcdef",
-		"SHOP_AUTH_PASSKEY_DOMAIN":  "toyshop.example",
-		"SHOP_AUTH_PASSKEY_ORIGINS": "https://toyshop.example,https://shop.toyshop.example:8443",
+		"SHOP_AUTH_ISSUER":            "toyshop",
+		"SHOP_AUTH_SECRET":            "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_PASSKEY_DOMAIN":    "toyshop.example",
+		"SHOP_AUTH_OIDC_PROVIDER":     "google",
+		"SHOP_AUTH_OIDC_ISSUER":       "https://accounts.google.com",
+		"SHOP_AUTH_OIDC_CLIENT_ID":    "shop",
+		"SHOP_AUTH_OIDC_REDIRECT_URL": "https://toyshop.example/sign-in/google/callback",
+		"SHOP_AUTH_PASSKEY_ORIGINS":   "https://toyshop.example,https://shop.toyshop.example:8443",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -47,9 +63,13 @@ func TestGenerated(t *testing.T) { cfgxtest.AssertGenerated(t) }
 // own check accepts it.
 func TestDefaults(t *testing.T) {
 	s, err := LoadServe(context.Background(), cfgx.WithEnv(map[string]string{
-		"SHOP_AUTH_ISSUER":         "toyshop",
-		"SHOP_AUTH_SECRET":         "0123456789abcdef0123456789abcdef",
-		"SHOP_AUTH_PASSKEY_DOMAIN": "toyshop.example",
+		"SHOP_AUTH_ISSUER":            "toyshop",
+		"SHOP_AUTH_SECRET":            "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_PASSKEY_DOMAIN":    "toyshop.example",
+		"SHOP_AUTH_OIDC_PROVIDER":     "google",
+		"SHOP_AUTH_OIDC_ISSUER":       "https://accounts.google.com",
+		"SHOP_AUTH_OIDC_CLIENT_ID":    "shop",
+		"SHOP_AUTH_OIDC_REDIRECT_URL": "https://toyshop.example/sign-in/google/callback",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -112,9 +132,13 @@ func (nobody) Send(context.Context, auth.Message) error { return nil }
 // length are auth.New's (amendment A9).
 func TestRanges(t *testing.T) {
 	base := map[string]string{
-		"SHOP_AUTH_ISSUER":         "toyshop",
-		"SHOP_AUTH_SECRET":         "0123456789abcdef0123456789abcdef",
-		"SHOP_AUTH_PASSKEY_DOMAIN": "toyshop.example",
+		"SHOP_AUTH_ISSUER":            "toyshop",
+		"SHOP_AUTH_SECRET":            "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_PASSKEY_DOMAIN":    "toyshop.example",
+		"SHOP_AUTH_OIDC_PROVIDER":     "google",
+		"SHOP_AUTH_OIDC_ISSUER":       "https://accounts.google.com",
+		"SHOP_AUTH_OIDC_CLIENT_ID":    "shop",
+		"SHOP_AUTH_OIDC_REDIRECT_URL": "https://toyshop.example/sign-in/google/callback",
 	}
 	load := func(env, v string) error {
 		e := map[string]string{}
@@ -166,7 +190,8 @@ func TestRanges(t *testing.T) {
 			}
 		}
 	}
-	for _, missing := range []string{"SHOP_AUTH_ISSUER", "SHOP_AUTH_SECRET", "SHOP_AUTH_PASSKEY_DOMAIN"} {
+	for _, missing := range []string{"SHOP_AUTH_ISSUER", "SHOP_AUTH_SECRET", "SHOP_AUTH_PASSKEY_DOMAIN",
+		"SHOP_AUTH_OIDC_PROVIDER", "SHOP_AUTH_OIDC_ISSUER", "SHOP_AUTH_OIDC_CLIENT_ID", "SHOP_AUTH_OIDC_REDIRECT_URL"} {
 		e := map[string]string{}
 		for k, x := range base {
 			if k != missing {

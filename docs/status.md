@@ -3,17 +3,34 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
-## 2026-11-17: v0.2.0 (M7.5)
+## 2026-11-17: v0.2.0 released, and the OIDC design (M7.5, M8.0)
 
-- **Landed:** the tag `v0.2.0` on main (ce7fe00), then `passkey` and
-  `authschema` require it with no `replace`; once that merges, the tags
-  `authschema/v0.2.0` and `passkey/v0.2.0`. The skill
-  `~/.claude/skills/auth/` describes v0.2.0 with a passkey section, and
-  your global CLAUDE.md names the release.
-- **Decided for you:** nothing.
-- **Next:** OIDC (`auth/oidc`, v0.3.0): its design and a draft interface
-  section for your lock, as M7.0 was for passkeys.
-- **Waiting on you:** nothing.
+- **Landed:** v0.2.0 is released: `v0.2.0` (ce7fe00), then
+  `authschema/v0.2.0` and `passkey/v0.2.0` (f7c043b), each requiring the
+  core's tag with no `replace`. A copy of the shop with no `replace`
+  builds and passes its end-to-end test against the three tags. The skill
+  `~/.claude/skills/auth/` describes v0.2.0, and your global CLAUDE.md
+  names it.
+- **Landed (M8.0):** the roadmap's M8 for `v0.3.0`;
+  [ADR 0009](adr/0009-oidc.md); the draft
+  [interface-oidc.md](interface-oidc.md).
+- **Review:** [review 0024](reviews/0024-oidc-draft.md), Gemini 4
+  Hydrogen (XHigh), about 93k tokens. Twelve findings, all accepted; the
+  draft was rewritten: the sign-up became `Flow.Unlinked` and `Link`,
+  identities moved out of `Factors`, discovery is checked against SSRF,
+  and a mail provider plus a code to its mailbox count as one factor.
+- **Decided for you:** the library (go-oidc), PKCE with `state` and
+  `nonce`, discovery on first use, no `amr`, provider tokens discarded,
+  `Link` only for a user new to auth.
+- **Waiting on you: lock the OIDC section.** Nine API choices, O1–O9 at
+  the top of interface-oidc.md, each with a default; a row you don't
+  answer takes it. The ones worth your eye:
+  - **O3:** getters for one provider (default, your rule) or a struct
+    (the reviewer's preference, simpler with several providers).
+  - **O6:** `Flow.Unlinked` and `Link` (default) or a sign-up hook.
+  - **O8:** `Identities` and `Unlink` (default) or reusing `Factors`.
+  - **O9:** `MethodResult.Address`, so one mailbox can't be two factors.
+- **Next:** once you lock it, M8.1 (the core).
 
 ## 2026-11-17: the security review of v0.2.0 (M7.4)
 

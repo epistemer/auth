@@ -9,6 +9,10 @@
 > The design and the options it rejected are in
 > [ADR 0001](adr/0001-one-flow.md). This file is the contract.
 >
+> **Pending:** OpenID Connect is drafted in
+> [interface-oidc.md](interface-oidc.md), waiting for epistemer's lock.
+> Until then this file is the whole contract.
+>
 > **Passkeys** (§4.11, §5.13, §6.6, and the changes to §4.2, §4.3, §4.9,
 > §5.1.3, §5.5, §7 and §9) were locked by epistemer on 2026-11-17 as
 > amendment A21, with decisions D27–D36 as recommended. The reasons are in

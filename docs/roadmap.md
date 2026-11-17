@@ -130,7 +130,22 @@ new module.
 | ☑ | M7.4 | A security review of M7.1–M7.3 by the other model family at its highest effort | Its findings are handled or recorded |
 | ☑ | M7.5 | Tags `v0.2.0`, then `authschema/v0.2.0` and `passkey/v0.2.0` (ADR 0004); the skill and epistemer's global CLAUDE.md updated | A copy of the example with no `replace` builds against the tags and passes its end-to-end test |
 
-## After v0.2.0
+## M8 — OpenID Connect (v0.3.0)
 
-- `auth/oidc` (`v0.3.0`), with its own interface section.
-- Then what interface §9 leaves out, as apps ask for it.
+Added 2026-11-17. The design is [ADR 0009](adr/0009-oidc.md), the
+contract [interface-oidc.md](interface-oidc.md). **M8.1 onwards waits for
+epistemer's lock of that draft**: it adds API to the core, to
+`authschema` and in a new module.
+
+| ✓ | ID | Item | Done when |
+|---|----|------|-----------|
+| ☐ | M8.0 | ADR 0009, the draft interface section with its changes to §4.3, §4.5, §4.9, §5.5.8, §5.5.9, §5.7.2 and §9, reviewed by the other model family ([review 0024](reviews/0024-oidc-draft.md)) | epistemer locks the draft; it is folded into interface.md as an amendment |
+| ☐ | M8.1 | The core: `Flow.Unlinked` and `Link` with the rule of §5.14.7, `Identities` and `Unlink`, `MethodResult.Address` (§5.7.2), `AddressOnly` replacing the core's list. Tested with a fake method | Every new rule has a test that fails without it; `auth/passkey` implements `AddressOnly` and passes |
+| ☐ | M8.2 | `auth/oidc` on go-oidc v3.21.0 and x/oauth2, with a test provider; CI runs it | §5.14 holds, each rule with a test that fails without it; the core's module graph is unchanged |
+| ☐ | M8.3 | `authschema.OIDC()`; the shop signs in with a test provider; README, CHANGELOG, `docs/api-review.md` | The example's end-to-end test signs in through a provider and links a new user; every new identifier checked against the locked section |
+| ☐ | M8.4 | A security review of M8.1–M8.3 by the other model family at its highest effort | Its findings are handled or recorded |
+| ☐ | M8.5 | Tags `v0.3.0`, `authschema/v0.3.0`, `oidc/v0.3.0`; the skill and epistemer's global CLAUDE.md | A copy of the example with no `replace` builds against the tags and passes its end-to-end test |
+
+## After v0.3.0
+
+- What interface §9 leaves out, as apps ask for it.

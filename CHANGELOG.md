@@ -18,6 +18,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   authenticator apps too.
 - `Refuse`, for a module's `Verify` to refuse a proof with a reason.
 - `MethodInput.Now`, the engine's clock.
+- The nested module `github.com/epistemer/auth/passkey`: passkeys
+  (WebAuthn Level 3) on go-webauthn, with `passkey.New`, `passkey.Response`
+  and `passkey/passkeytest`, a software authenticator for an app's tests
+  (amendments A21, A23).
 
 ### Changed
 

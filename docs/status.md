@@ -3,6 +3,31 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: the passkey module (M7.2)
+
+- **Landed:** `auth/passkey`, a nested module on go-webauthn v0.18.2
+  (protocol package only; no type of it in the API): `New` with §4.11's
+  checks of the domain and origins, options built as WebAuthn Level 3's
+  JSON, registration and assertion with every rule of §5.13 and its
+  reason, records as versioned protobuf. `passkey/passkeytest` signs real
+  ES256 assertions for an app's tests; an internal authenticator with
+  knobs drives the refusals. CI runs vet, staticcheck, the tidy check,
+  the generated-code check and the tests in `passkey/`. The core's
+  module graph still holds no WebAuthn module.
+- **Tests:** each rule of §5.13 has a test that fails without it: 66
+  mutations, every one caught once redundant checks were removed. ES256,
+  EdDSA and RS256 register and sign in, through the engine too.
+- **Review:** [review 0022](reviews/0022-m7.2-passkey.md), Gemini 4
+  Hydrogen (XHigh) (about 388k tokens), the fixes checked by Hydrogen
+  (High) (about 695k). The serious one: with attestation `none` the
+  library never parses the key, so a broken key could have been enrolled
+  as a factor; it is now parsed and checked.
+- **Decided for you:** where §5.13 was silent, amendment A23 (usable keys,
+  RSA's minimum, the attested ID, options bound to a known user, exact
+  origins).
+- **Next:** M7.3, `authschema.Passkey()` and the shop example.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: the engine drives modules (M7.1)
 
 - **Landed:** `New` accepts `WithMethods`; `Challenge` calls a module's

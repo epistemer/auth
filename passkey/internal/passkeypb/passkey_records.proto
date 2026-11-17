@@ -1,0 +1,34 @@
+// Records auth/passkey keeps: a credential's data (auth.Credential.Data)
+// and a challenge's state in a flow. Neither holds a secret: a public key,
+// a counter, flags, a challenge the client was sent.
+
+syntax = "proto3";
+
+package auth.passkey.v1;
+
+option go_package = "github.com/epistemer/auth/passkey/internal/passkeypb";
+
+// Credential is a passkey's record (interface §5.13.10).
+message Credential {
+  uint32 version = 1;
+  bytes public_key = 2; // the COSE key, as the authenticator gave it
+  int64 algorithm = 3;  // its COSE algorithm: -7, -8 or -257
+  uint32 counter = 4;
+  bool backup_eligible = 5; // fixed at registration
+  bool backup_state = 6;    // as last seen
+  repeated string transports = 7;
+  bytes aaguid = 8;
+  string attestation_format = 9;
+}
+
+// State is what a flow keeps between Challenge and Prove (§5.13.9): never
+// the credential list.
+message State {
+  uint32 version = 1;
+  bytes challenge = 2;
+  bool create = 3;   // a registration; else an assertion
+  int64 expires = 4; // Unix nanoseconds
+  // The user whose credentials the options named; empty when they named
+  // none, and the response must then carry a user handle.
+  string user_id = 5;
+}

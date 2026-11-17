@@ -3,6 +3,59 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: passkeys locked (M7.0 done)
+
+- **Landed:** you locked the passkey section with every default. It is
+  folded into [interface.md](interface.md) as amendment A21: P1–P10 are
+  decisions D27–D36 of §3, the module is §4.11 and §5.13, the example
+  §6.6, and the changes to §4.2, §4.3, §4.9, §5.1.3, §5.5, §7 and §9 are
+  made in place. interface-passkey.md now only points there.
+- **Fixed:** the shop example's end-to-end test started its clock on
+  2026-11-16, while the cookie jar expires cookies by the real clock, so
+  from today it dropped the flow cookie and every sign-in failed with
+  `ErrFlowExpired`. The test's clock now starts at the real time. Only
+  the test changed.
+- **Decided for you:** nothing.
+- **Next:** M7.1, the engine drives modules.
+- **Waiting on you:** nothing.
+
+## 2026-11-17: the passkey design (M7.0)
+
+- **Landed:** the roadmap's M7 for `v0.2.0` (M7.0–M7.5), with what the
+  engine must change; [ADR 0008](adr/0008-passkeys.md), which decides the
+  library (go-webauthn v0.18.2), discoverable credentials with the
+  `UserID` as user handle, `Challenge.Options` as WebAuthn's JSON,
+  attestation `none`, counters as WebAuthn §7.2 says, and every passkey
+  proof as two factors; and the draft
+  [interface-passkey.md](interface-passkey.md): §4.11, §5.13 and the
+  changes to §4.2, §4.3, §4.9, §5.1.3, §5.5 and §9.
+- **Review:** [review 0020](reviews/0020-passkey-draft.md). Argon's quota
+  is out for about 113 hours, so Gemini 4 Hydrogen (XHigh) reviewed
+  (about 94k tokens) and Hydrogen (High) checked the fixes (about 59k).
+  Fourteen findings, twelve accepted and two in part; it moved P3 and P6
+  to their other options. Nine points from the check, eight accepted.
+- **Decided for you** (each can be overturned): the library; UV
+  required; a passkey as an enrolled second factor that can change
+  factors alone, as §5.7.2 already says (the reviewer would have wanted a
+  second proof for that; declined, see review 0020); throttling of
+  passkeys by address, or by a registered device's pair, never by user;
+  at most 20 passkeys a user.
+- **Waiting on you: lock the passkey section.** Ten API choices, P1–P10
+  at the top of interface-passkey.md, each with a default; a row you
+  don't answer takes it. The ones the reviewer argued:
+  - **P1:** `auth.MethodPasskey` in the core (default) or `passkey.Name`.
+  - **P3:** an opt-in fragment `authschema.Passkey()`, with
+    `authschema.Group` made variadic (default).
+  - **P6:** a starter of its own, `SignInWithout(ctx, c)` (default),
+    rather than `SignIn` with an empty login.
+  The others: `passkey.New(cfg) (auth.Method, error)`,
+  `passkey.Response(json)`, `Challenge.Options` as a `json.RawMessage`,
+  `auth.FactorLabel`, `auth.Refuse`, `passkey/passkeytest`, and
+  `MethodInput.Now`.
+- **Next:** once you lock it, the draft is folded into interface.md as
+  amendment A21 and M7.1 starts (the engine drives modules). Nothing of
+  the module is written before.
+
 ## 2026-11-16: v0.1.0 (M6.4)
 
 - **Released:** `v0.1.0` of the core is tagged on PR #21's merge, and

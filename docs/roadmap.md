@@ -6,7 +6,7 @@
 > | Document | Answers |
 > |----------|---------|
 > | [ADR 0001](adr/0001-one-flow.md) | *What* the package does, and why that way |
-> | [interface.md](interface.md) | *What* an app writes and gets back (locked 2026-11-14) |
+> | [interface.md](interface.md) | *What* an app writes and gets back (locked 2026-11-14; passkeys 2026-11-17, A21) |
 > | this file | *In what order*, and *when each piece counts as done* |
 
 ## How to use this document
@@ -36,6 +36,7 @@
 | [M4](#m4--authenticator-apps) | Enrolment, TOTP, recovery codes | M2 |
 | [M5](#m5--access) | `auth/access` | M1 |
 | [M6](#m6--release) | Example app, README, API review, the skill, `v0.1.0` | M2–M5 |
+| [M7](#m7--passkeys-v020) | The engine drives modules; `auth/passkey`; `v0.2.0` | M6 |
 
 ## Definition of done (every work item)
 
@@ -113,8 +114,23 @@
 | ☑ | M6.3 | A security review of the whole package by the other model family at its highest effort | Its findings are handled or recorded |
 | ☑ | M6.4 | `v0.1.0`, the skill `~/.claude/skills/auth/`, and auth in epistemer's global CLAUDE.md | `go get github.com/epistemer/auth@v0.1.0` resolves and the example builds against it |
 
-## After v0.1.0
+## M7 — Passkeys (v0.2.0)
 
-- `auth/passkey` (`v0.2.0`), with its own interface section.
+Added 2026-11-17. The design is [ADR 0008](adr/0008-passkeys.md), the
+contract [interface.md](interface.md) A21 (§4.11, §5.13), which epistemer
+locked on 2026-11-17. It adds API to the core, to `authschema` and in a
+new module.
+
+| ✓ | ID | Item | Done when |
+|---|----|------|-----------|
+| ☑ | M7.0 | ADR 0008, the draft interface section with its amendments to §4.2, §4.3, §4.9, §5.1.3, §5.5 and §9, reviewed by the other model family ([review 0020](reviews/0020-passkey-draft.md)) | epistemer locks the draft; it is folded into interface.md as amendment A21 |
+| ☐ | M7.1 | The engine drives modules: `New` accepts `WithMethods` (A19 withdrawn); `Challenge` calls `Start`, `Prove` calls `Verify`, under the new rules of §5.5; `SignInWithout`; passkeys as enrolled factors; `FactorLabel`, `Refuse`, `MethodPasskey`, `MethodInput.Now`. Tested with a fake method in the core's tests | Every new rule of §5.5 has a test that fails without it, with a fake method; the §7 tests that need no real passkey pass; the core's graph is unchanged |
+| ☐ | M7.2 | `auth/passkey` as a nested module on go-webauthn (ADR 0008), with `passkey/passkeytest`; CI runs it in the matrix | §5.13 holds, each rule with a test that fails without it, through `passkeytest`; the §7 passkey tests pass; `go mod graph` of the core shows no WebAuthn module |
+| ☐ | M7.3 | `authschema.Passkey()` and a variadic `Group`; the shop example signs in and enrolls with a passkey; README, CHANGELOG, `docs/api-review.md` for the new identifiers | The example's end-to-end test signs in by passkey alone and is verified; every new exported identifier is checked against the locked section |
+| ☐ | M7.4 | A security review of M7.1–M7.3 by the other model family at its highest effort | Its findings are handled or recorded |
+| ☐ | M7.5 | Tags `v0.2.0`, then `authschema/v0.2.0` and `passkey/v0.2.0` (ADR 0004); the skill and epistemer's global CLAUDE.md updated | A copy of the example with no `replace` builds against the tags and passes its end-to-end test |
+
+## After v0.2.0
+
 - `auth/oidc` (`v0.3.0`), with its own interface section.
 - Then what interface §9 leaves out, as apps ask for it.

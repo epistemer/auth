@@ -65,7 +65,9 @@ func newWorld(t *testing.T) *world {
 	dir.Add("u2", "omar@toyshop.example", "Omar", "omar@toyshop.example")
 	dir.Add("u3", "lina", "Lina", "")
 	dir.Add("u4", "max", "Max", "")
-	c := &clock{t: time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)}
+	// The clock starts now: the cookie jar expires cookies by the real clock,
+	// so a fixed date makes every flow cookie stale once that date has passed.
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
 	out := shop.NewOutbox()
 	s, err := shop.New(db, cfg, dir, out, auth.WithClock(c.now))
 	if err != nil {

@@ -4,7 +4,12 @@
 //	var Auth = authschema.Group()
 //	var Serve = dsl.Command("Serve").Uses(Auth /* , … */)
 //
-// The generated *settings.Serve then satisfies auth.Config. The group is
+// The generated *settings.Serve then satisfies auth.Config. With passkeys,
+// nest their group in it, and the settings satisfy passkey.Config too:
+//
+//	var Auth = authschema.Group(authschema.Passkey())
+//
+// The group is
 // pinned with GoName("Auth"), and no key name holds an initialism, so the
 // getter names don't depend on the app's Initialisms.
 //
@@ -22,9 +27,10 @@ import (
 )
 
 // Group returns the cfgx group auth: its keys, defaults and ranges.
-func Group() *dsl.GroupDef {
+// members are nested in it, such as Passkey().
+func Group(members ...dsl.Member) *dsl.GroupDef {
 	h := time.Hour
-	return dsl.Group("auth", "Sign-in and sessions",
+	keys := []dsl.Member{
 		dsl.String("issuer", "Issuer: the name in tokens and authenticator apps").Required(),
 		dsl.Secret("secret", "Master secret, at least 32 bytes; every key is derived from it").Required(),
 		dsl.Secret("secret_previous", "Previous master secret, while rotating"),
@@ -77,5 +83,17 @@ func Group() *dsl.GroupDef {
 			dsl.Bool("insecure", "Drop Secure and the __Host- prefix, for development over plain HTTP"),
 		),
 		dsl.Strings("trusted_origins", "Origins whose cross-origin requests are trusted"),
-	).GoName("Auth")
+	}
+	return dsl.Group("auth", "Sign-in and sessions", append(keys, members...)...).GoName("Auth")
+}
+
+// Passkey returns the group passkey, for auth/passkey (interface §4.11):
+// domain, the relying party ID, which an app with passkeys must set, and
+// origins. passkey.New checks both; an app without passkeys leaves the
+// group out, so it neither shows nor asks for them.
+func Passkey() *dsl.GroupDef {
+	return dsl.Group("passkey", "Passkeys",
+		dsl.String("domain", "Domain passkeys are bound to: the site's, without scheme or port").Required(),
+		dsl.Strings("origins", "Origins passkeys may be used from; https://<domain> when empty"),
+	)
 }

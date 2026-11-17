@@ -16,6 +16,30 @@ import (
 // M1.6's done-when: a generated config satisfies auth.Config.
 var _ auth.Config = (*Serve)(nil)
 
+// With authschema.Passkey() nested, it satisfies passkey.Config too
+// (interface §4.11), named here so authschema needn't import the module.
+var _ interface {
+	AuthIssuer() string
+	AuthPasskeyDomain() string
+	AuthPasskeyOrigins() []string
+} = (*Serve)(nil)
+
+// The passkey keys load from the environment, the origins as a list.
+func TestPasskeyKeys(t *testing.T) {
+	s, err := LoadServe(context.Background(), cfgx.WithEnv(map[string]string{
+		"SHOP_AUTH_ISSUER":          "toyshop",
+		"SHOP_AUTH_SECRET":          "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_PASSKEY_DOMAIN":  "toyshop.example",
+		"SHOP_AUTH_PASSKEY_ORIGINS": "https://toyshop.example,https://shop.toyshop.example:8443",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AuthPasskeyDomain() != "toyshop.example" || len(s.AuthPasskeyOrigins()) != 2 || s.AuthPasskeyOrigins()[1] != "https://shop.toyshop.example:8443" {
+		t.Errorf("domain %q, origins %q", s.AuthPasskeyDomain(), s.AuthPasskeyOrigins())
+	}
+}
+
 func TestGenerated(t *testing.T) { cfgxtest.AssertGenerated(t) }
 
 // The defaults and ranges are interface §4.8's: loaded with only the
@@ -23,8 +47,9 @@ func TestGenerated(t *testing.T) { cfgxtest.AssertGenerated(t) }
 // own check accepts it.
 func TestDefaults(t *testing.T) {
 	s, err := LoadServe(context.Background(), cfgx.WithEnv(map[string]string{
-		"SHOP_AUTH_ISSUER": "toyshop",
-		"SHOP_AUTH_SECRET": "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_ISSUER":         "toyshop",
+		"SHOP_AUTH_SECRET":         "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_PASSKEY_DOMAIN": "toyshop.example",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -87,8 +112,9 @@ func (nobody) Send(context.Context, auth.Message) error { return nil }
 // length are auth.New's (amendment A9).
 func TestRanges(t *testing.T) {
 	base := map[string]string{
-		"SHOP_AUTH_ISSUER": "toyshop",
-		"SHOP_AUTH_SECRET": "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_ISSUER":         "toyshop",
+		"SHOP_AUTH_SECRET":         "0123456789abcdef0123456789abcdef",
+		"SHOP_AUTH_PASSKEY_DOMAIN": "toyshop.example",
 	}
 	load := func(env, v string) error {
 		e := map[string]string{}
@@ -140,7 +166,7 @@ func TestRanges(t *testing.T) {
 			}
 		}
 	}
-	for _, missing := range []string{"SHOP_AUTH_ISSUER", "SHOP_AUTH_SECRET"} {
+	for _, missing := range []string{"SHOP_AUTH_ISSUER", "SHOP_AUTH_SECRET", "SHOP_AUTH_PASSKEY_DOMAIN"} {
 		e := map[string]string{}
 		for k, x := range base {
 			if k != missing {

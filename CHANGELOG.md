@@ -22,10 +22,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
   (WebAuthn Level 3) on go-webauthn, with `passkey.New`, `passkey.Response`
   and `passkey/passkeytest`, a software authenticator for an app's tests
   (amendments A21, A23).
+- `authschema.Passkey()`, the group of passkey keys, nested with
+  `authschema.Group(authschema.Passkey())`.
+- `examples/shop` signs in and steps up with passkeys, and enrolls them.
 
 ### Changed
 
 - `New` no longer refuses `WithMethods` (A19's refusal is withdrawn).
+- `authschema.Group` takes nested groups (`members ...dsl.Member`); every
+  existing call compiles unchanged.
 
 ## [v0.1.0] - 2026-11-16
 

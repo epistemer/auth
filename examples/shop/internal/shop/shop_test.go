@@ -21,6 +21,7 @@ import (
 	"github.com/epistemer/auth/access"
 	"github.com/epistemer/auth/examples/shop/internal/settings"
 	"github.com/epistemer/auth/examples/shop/internal/shop"
+	"github.com/epistemer/auth/passkey/passkeytest"
 )
 
 const pw = "orange tiger juggles 47 lamps"
@@ -54,6 +55,7 @@ func newWorld(t *testing.T) *world {
 		v.Auth.Issuer = "toyshop"
 		v.Auth.Secret = cfgx.NewSecret(strings.Repeat("s", 32))
 		v.Auth.Password.Memory, v.Auth.Password.Time = 19, 1
+		v.Auth.Passkey.Domain = "toyshop.example"
 	})
 	db, err := bolt.Open(filepath.Join(t.TempDir(), "shop.db"), 0o600, nil)
 	if err != nil {
@@ -321,5 +323,97 @@ func TestAPI(t *testing.T) {
 	}
 	if code, _ := w.api("/api/me", nil, next["access"].(string)); code != http.StatusUnauthorized {
 		t.Errorf("the session after the reuse: %d", code)
+	}
+}
+
+// postJSON posts raw JSON, as the page posts a credential.
+func (w *world) postJSON(c *http.Client, path string, body []byte) (int, map[string]any) {
+	w.t.Helper()
+	r, _ := http.NewRequest("POST", w.srv.URL+path, bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	return w.do(c, r)
+}
+
+// optionsOf takes a passkey's options out of a reply.
+func optionsOf(t *testing.T, body map[string]any) json.RawMessage {
+	t.Helper()
+	o, err := json.Marshal(body["options"])
+	if err != nil || body["options"] == nil {
+		t.Fatalf("no options in %v", body)
+	}
+	return o
+}
+
+// M7.3's done-when: the example signs in and enrolls with a passkey, and a
+// passkey alone makes a verified session. Sara, staff, adds a passkey from
+// her two-factor session; a new browser then signs in by passkey alone, is
+// verified and approves a payout; signing in by password then asks for the
+// passkey, not the code; and a step-up takes the passkey too.
+func TestPasskey(t *testing.T) {
+	w := newWorld(t)
+	sara := w.browser()
+	if body := w.signIn(sara, "sara@toyshop.example"); body["verified"] != true {
+		t.Fatalf("sara's sign-in: %v", body)
+	}
+	pk := passkeytest.New(t, "https://toyshop.example")
+	code, body := w.post(sara, "/passkey/enroll", nil)
+	if code != 200 {
+		t.Fatalf("enroll: %d %v", code, body)
+	}
+	code, body = w.postJSON(sara, "/passkey/enroll/finish?label=Sara%27s+laptop", pk.Create(optionsOf(t, body)))
+	if codes, _ := body["recovery_codes"].([]any); code != 200 || len(codes) == 0 {
+		t.Fatalf("enroll finish: %d %v", code, body)
+	}
+	if fs, _ := w.shop.Auth.Factors(context.Background(), "u1"); len(fs) != 1 || fs[0].Label != "Sara's laptop" {
+		t.Errorf("factors: %+v", fs)
+	}
+
+	// A new browser, by passkey alone.
+	laptop := w.browser()
+	code, body = w.post(laptop, "/passkey/options", nil)
+	if code != 200 || body["next"] != "passkey" {
+		t.Fatalf("options: %d %v", code, body)
+	}
+	code, body = w.postJSON(laptop, "/passkey/prove", pk.Get(optionsOf(t, body)))
+	if code != 200 || body["user"] != "u1" || body["verified"] != true {
+		t.Fatalf("passkey sign-in: %d %v", code, body)
+	}
+	if code, _ := w.post(laptop, "/payouts/approve", nil); code != 200 {
+		t.Errorf("a payout after a passkey: %d", code)
+	}
+
+	// The password now asks for the passkey, not a code.
+	phone := w.browser()
+	code, body = w.post(phone, "/sign-in", url.Values{"login": {"sara@toyshop.example"}, "password": {pw}})
+	if code != 200 || body["next"] != "passkey" {
+		t.Fatalf("password: %d %v", code, body)
+	}
+	if code, body = w.postJSON(phone, "/passkey/prove", pk.Get(optionsOf(t, body))); code != 200 || body["verified"] != true {
+		t.Fatalf("password and passkey: %d %v", code, body)
+	}
+
+	// A stale proof, stepped up by passkey.
+	w.clock.advance(6 * time.Minute)
+	if code, _ := w.post(laptop, "/payouts/approve", nil); code != http.StatusForbidden {
+		t.Errorf("a stale payout: %d", code)
+	}
+	code, body = w.post(laptop, "/step-up", nil)
+	if code != 200 || body["next"] != "passkey" {
+		t.Fatalf("step-up: %d %v", code, body)
+	}
+	if code, body = w.postJSON(laptop, "/passkey/prove", pk.Get(optionsOf(t, body))); code != 200 {
+		t.Fatalf("step-up proof: %d %v", code, body)
+	}
+	if code, _ := w.post(laptop, "/payouts/approve", nil); code != 200 {
+		t.Errorf("a payout after the step-up: %d", code)
+	}
+
+	// A passkey nobody enrolled is refused, as a wrong password is.
+	stranger := passkeytest.New(t, "https://toyshop.example")
+	stranger.Create(json.RawMessage(`{"rp":{"id":"toyshop.example"},"user":{"id":"dTk"},"challenge":"AAAA"}`))
+	other := w.browser()
+	_, body = w.post(other, "/passkey/options", nil)
+	if code, body := w.postJSON(other, "/passkey/prove", stranger.Get(optionsOf(t, body))); code != http.StatusUnauthorized || body["code"] != "errors.auth.bad_credentials" {
+		t.Errorf("a stranger's passkey: %d %v", code, body)
 	}
 }

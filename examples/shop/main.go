@@ -1,7 +1,12 @@
 // Command shop runs the toy shop: auth's example app.
 //
 //	SHOP_AUTH_ISSUER=toyshop SHOP_AUTH_SECRET=$(openssl rand -hex 32) \
+//	SHOP_AUTH_PASSKEY_DOMAIN=localhost SHOP_AUTH_PASSKEY_ORIGINS=http://localhost:8080 \
+//	SHOP_AUTH_COOKIE_INSECURE=true \
 //	SHOP_DEMO_PASSWORD='a long phrase of your own' SHOP_DEMO_MAIL=$(mktemp -d) go run .
+//
+// Passkeys are bound to a domain; on your own machine it is localhost, over
+// plain HTTP, which browsers allow for localhost alone.
 //
 // With SHOP_DEMO_PASSWORD set it seeds sara@toyshop.example, a member of
 // root, with that password. With SHOP_DEMO_MAIL set to a directory, mail is

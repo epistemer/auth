@@ -133,13 +133,12 @@ new module.
 ## M8 — OpenID Connect (v0.3.0)
 
 Added 2026-11-17. The design is [ADR 0009](adr/0009-oidc.md), the
-contract [interface-oidc.md](interface-oidc.md). **M8.1 onwards waits for
-epistemer's lock of that draft**: it adds API to the core, to
-`authschema` and in a new module.
+contract [interface.md](interface.md) A25 (§4.12, §5.14), which epistemer
+locked on 2026-11-17.
 
 | ✓ | ID | Item | Done when |
 |---|----|------|-----------|
-| ☐ | M8.0 | ADR 0009, the draft interface section with its changes to §4.3, §4.5, §4.9, §5.5.8, §5.5.9, §5.7.2 and §9, reviewed by the other model family ([review 0024](reviews/0024-oidc-draft.md)) | epistemer locks the draft; it is folded into interface.md as an amendment |
+| ☑ | M8.0 | ADR 0009, the draft interface section with its changes to §4.3, §4.5, §4.9, §5.5.8, §5.5.9, §5.7.2 and §9, reviewed by the other model family ([review 0024](reviews/0024-oidc-draft.md)) | epistemer locks the draft; it is folded into interface.md as an amendment |
 | ☐ | M8.1 | The core: `Flow.Unlinked` and `Link` with the rule of §5.14.7, `Identities` and `Unlink`, `MethodResult.Address` (§5.7.2), `AddressOnly` replacing the core's list. Tested with a fake method | Every new rule has a test that fails without it; `auth/passkey` implements `AddressOnly` and passes |
 | ☐ | M8.2 | `auth/oidc` on go-oidc v3.21.0 and x/oauth2, with a test provider; CI runs it | §5.14 holds, each rule with a test that fails without it; the core's module graph is unchanged |
 | ☐ | M8.3 | `authschema.OIDC()`; the shop signs in with a test provider; README, CHANGELOG, `docs/api-review.md` | The example's end-to-end test signs in through a provider and links a new user; every new identifier checked against the locked section |

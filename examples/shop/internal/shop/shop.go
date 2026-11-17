@@ -305,7 +305,10 @@ func (s *Shop) askPasskey(w http.ResponseWriter, r *http.Request, f auth.Flow) {
 }
 
 // passkeyOptions starts a sign-in that names no login, as the sign-in page
-// loads, so the browser can offer the user's passkeys in autofill.
+// loads, so the browser can offer the user's passkeys in autofill. Each
+// call stores a small flow that Sweep removes when it expires; an app open
+// to the internet puts a rate limit in front of it, as of any route anyone
+// may call.
 func (s *Shop) passkeyOptions(w http.ResponseWriter, r *http.Request) {
 	f, err := s.Auth.SignInWithout(r.Context(), auth.Cookie())
 	if err != nil {
@@ -318,14 +321,12 @@ func (s *Shop) passkeyOptions(w http.ResponseWriter, r *http.Request) {
 // passkeyProve takes the browser's answer, the JSON of the credential, for
 // the flow in the flow cookie: a sign-in, its second proof, or a step-up.
 func (s *Shop) passkeyProve(w http.ResponseWriter, r *http.Request) {
-	token, ok := auth.FlowToken(r.Context())
+	token, ok := s.flowFor(w, r, auth.PurposeSignIn, auth.PurposeStepUp)
 	if !ok {
-		fail(w, r, auth.ErrFlowExpired)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10+1))
-	if err != nil {
-		fail(w, r, err)
+	body, ok := credential(w, r)
+	if !ok {
 		return
 	}
 	f, err := s.Auth.Prove(r.Context(), token, passkey.Response(body))
@@ -360,14 +361,12 @@ func (s *Shop) passkeyEnroll(w http.ResponseWriter, r *http.Request) {
 // codes, shown once.
 func (s *Shop) passkeyEnrolled(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	token, ok := auth.FlowToken(ctx)
+	token, ok := s.flowFor(w, r, auth.PurposeEnroll)
 	if !ok {
-		fail(w, r, auth.ErrFlowExpired)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10+1))
-	if err != nil {
-		fail(w, r, err)
+	body, ok := credential(w, r)
+	if !ok {
 		return
 	}
 	f, err := s.Auth.Prove(ctx, token, passkey.Response(body))
@@ -382,6 +381,45 @@ func (s *Shop) passkeyEnrolled(w http.ResponseWriter, r *http.Request) {
 	}
 	res.Write(w)
 	reply(w, map[string]any{"recovery_codes": res.RecoveryCodes})
+}
+
+// flowFor is the flow cookie's token, if its flow is for one of purposes:
+// an enrollment's answer posted to the sign-in route, or the other way
+// round, would finish the wrong flow, and lose the recovery codes an
+// enrollment returns.
+func (s *Shop) flowFor(w http.ResponseWriter, r *http.Request, purposes ...auth.Purpose) (string, bool) {
+	token, ok := auth.FlowToken(r.Context())
+	if !ok {
+		fail(w, r, auth.ErrFlowExpired)
+		return "", false
+	}
+	f, err := s.Auth.Flow(r.Context(), token)
+	if err != nil {
+		fail(w, r, err)
+		return "", false
+	}
+	for _, p := range purposes {
+		if f.Purpose == p {
+			return token, true
+		}
+	}
+	fail(w, r, auth.ErrMethodUnavailable)
+	return "", false
+}
+
+// credential reads the credential the page posted: refused with 413 past
+// 64 KiB, before it can use up the flow's challenge.
+func credential(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10+1))
+	if err != nil {
+		fail(w, r, err)
+		return nil, false
+	}
+	if len(body) > 64<<10 {
+		http.Error(w, "a credential is at most 64 KiB", http.StatusRequestEntityTooLarge)
+		return nil, false
+	}
+	return body, true
 }
 
 func (s *Shop) signOut(w http.ResponseWriter, r *http.Request) {

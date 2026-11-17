@@ -33,6 +33,7 @@ import (
 	"math"
 	"math/big"
 	"net/netip"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -89,7 +90,7 @@ type method struct {
 // characters>. With the domain localhost the origins are required, since
 // the port is the app's.
 func New(cfg Config) (auth.Method, error) {
-	if cfg == nil {
+	if cfg == nil || isNil(cfg) {
 		return nil, errors.New("passkey: New needs a config")
 	}
 	m := &method{issuer: cfg.AuthIssuer(), domain: cfg.AuthPasskeyDomain()}
@@ -119,6 +120,16 @@ func New(cfg Config) (auth.Method, error) {
 	}
 	m.rpIDHash = sha256.Sum256([]byte(m.domain))
 	return m, nil
+}
+
+// isNil reports whether an interface holds a nil pointer or the like.
+func isNil(v any) bool {
+	r := reflect.ValueOf(v)
+	switch r.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Func, reflect.Chan, reflect.Slice, reflect.Interface:
+		return r.IsNil()
+	}
+	return false
 }
 
 func validDomain(d string) bool {
@@ -457,7 +468,10 @@ func usableKey(cose []byte, alg int64) bool {
 		e, err := webauthncose.ParseRSAPublicKeyDataExponent(&k)
 		n := new(big.Int).SetBytes(k.Modulus)
 		// crypto/rsa verifies with no exponent over 2³¹-1.
-		return alg == -257 && err == nil && e >= 3 && e <= math.MaxInt32 && e%2 == 1 && n.BitLen() >= 2048
+		// At most 4096 bits: a larger modulus makes each verification dear,
+		// and no passkey uses one (review 0023).
+		return alg == -257 && err == nil && e >= 3 && e <= math.MaxInt32 && e%2 == 1 &&
+			n.BitLen() >= 2048 && n.BitLen() <= 4096
 	}
 	return false
 }

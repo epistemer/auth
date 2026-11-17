@@ -239,6 +239,10 @@ func (a *Auth) methodInput(ctx context.Context, rec *storepb.Flow, method string
 // replacing any earlier state of the method (§4.9, §5.5.9).
 func (a *Auth) challengeModule(ctx context.Context, hash []byte, rec *storepb.Flow, m Method) (Challenge, error) {
 	name := m.Name()
+	// Past its Challenges the method isn't asked at all (review 0023).
+	if capped(rec, name) {
+		return Challenge{}, ErrMethodUnavailable
+	}
 	in, err := a.methodInput(ctx, rec, name, nil)
 	if err != nil {
 		return Challenge{}, err
@@ -258,7 +262,10 @@ func (a *Auth) challengeModule(ctx context.Context, hash []byte, rec *storepb.Fl
 		if a.now().UnixNano() >= cur.Expires {
 			return store.ErrNotFound
 		}
-		if capped(cur, name) {
+		// A proof made while Start ran changes what the method should have
+		// been told, the user and their credentials: its options are stale
+		// (review 0023).
+		if capped(cur, name) || len(cur.Proofs) != len(rec.Proofs) || cur.UserId != rec.UserId {
 			return errOffered
 		}
 		if cur.MethodState == nil {

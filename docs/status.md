@@ -3,6 +3,18 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: v0.2.0 (M7.5)
+
+- **Landed:** the tag `v0.2.0` on main (ce7fe00), then `passkey` and
+  `authschema` require it with no `replace`; once that merges, the tags
+  `authschema/v0.2.0` and `passkey/v0.2.0`. The skill
+  `~/.claude/skills/auth/` describes v0.2.0 with a passkey section, and
+  your global CLAUDE.md names the release.
+- **Decided for you:** nothing.
+- **Next:** OIDC (`auth/oidc`, v0.3.0): its design and a draft interface
+  section for your lock, as M7.0 was for passkeys.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: the security review of v0.2.0 (M7.4)
 
 - **Review:** [review 0023](reviews/0023-m7.4-security.md) of everything

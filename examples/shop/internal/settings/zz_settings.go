@@ -48,6 +48,13 @@ type values struct {
 	AuthCookieInsecure        bool
 	AuthPasskeyDomain         string
 	AuthPasskeyOrigins        []string
+	AuthOIDCProvider          string
+	AuthOIDCIssuer            string
+	AuthOIDCClientID          string
+	AuthOIDCClientSecret      cfgx.Secret
+	AuthOIDCRedirectURL       string
+	AuthOIDCScopes            []string
+	AuthOIDCTwoFactors        bool
 	ServerAddr                string
 	ServerStore               string
 }
@@ -474,6 +481,55 @@ var keys = [...]engine.Key[values]{
 		Show:     func(v *values) any { return v.AuthPasskeyOrigins },
 	},
 	{
+		Path: "auth.oidc.provider", Env: "SHOP_AUTH_OIDC_PROVIDER", Flag: "auth-oidc-provider",
+		Type: "string", Desc: "Provider's name, as in its sign-in method oidc_<provider>", Quote: true, Required: true,
+		Set:   func(v *values, raw string) error { return engine.ParseString(raw, &v.AuthOIDCProvider) },
+		IsSet: func(v *values) bool { return v.AuthOIDCProvider != "" },
+		Show:  func(v *values) any { return v.AuthOIDCProvider },
+	},
+	{
+		Path: "auth.oidc.issuer", Env: "SHOP_AUTH_OIDC_ISSUER", Flag: "auth-oidc-issuer",
+		Type: "string", Desc: "Provider's issuer URL", Quote: true, Required: true,
+		Set:   func(v *values, raw string) error { return engine.ParseString(raw, &v.AuthOIDCIssuer) },
+		IsSet: func(v *values) bool { return v.AuthOIDCIssuer != "" },
+		Show:  func(v *values) any { return v.AuthOIDCIssuer },
+	},
+	{
+		Path: "auth.oidc.client_id", Env: "SHOP_AUTH_OIDC_CLIENT_ID", Flag: "auth-oidc-client-id",
+		Type: "string", Desc: "Client ID the provider gave the app", Quote: true, Required: true,
+		Set:   func(v *values, raw string) error { return engine.ParseString(raw, &v.AuthOIDCClientID) },
+		IsSet: func(v *values) bool { return v.AuthOIDCClientID != "" },
+		Show:  func(v *values) any { return v.AuthOIDCClientID },
+	},
+	{
+		Path: "auth.oidc.client_secret", Env: "SHOP_AUTH_OIDC_CLIENT_SECRET", Flag: "",
+		Type: "", Desc: "Client secret; empty for a public client", FileEnv: true, MaxFileSize: 1048576,
+		Set:   func(v *values, raw string) error { return engine.ParseSecret(raw, &v.AuthOIDCClientSecret) },
+		IsSet: func(v *values) bool { return v.AuthOIDCClientSecret.IsSet() },
+		Show:  func(v *values) any { return engine.ShowSecret(v.AuthOIDCClientSecret) },
+	},
+	{
+		Path: "auth.oidc.redirect_url", Env: "SHOP_AUTH_OIDC_REDIRECT_URL", Flag: "auth-oidc-redirect-url",
+		Type: "string", Desc: "Callback URL the provider redirects to", Quote: true, Required: true,
+		Set:   func(v *values, raw string) error { return engine.ParseString(raw, &v.AuthOIDCRedirectURL) },
+		IsSet: func(v *values) bool { return v.AuthOIDCRedirectURL != "" },
+		Show:  func(v *values) any { return v.AuthOIDCRedirectURL },
+	},
+	{
+		Path: "auth.oidc.scopes", Env: "SHOP_AUTH_OIDC_SCOPES", Flag: "auth-oidc-scopes",
+		Type: "strings", Desc: "Scopes beyond openid; email and profile when empty",
+		SetItems: func(v *values, items []string) error { return engine.ParseStrings(items, &v.AuthOIDCScopes) },
+		IsSet:    func(v *values) bool { return len(v.AuthOIDCScopes) != 0 },
+		Show:     func(v *values) any { return v.AuthOIDCScopes },
+	},
+	{
+		Path: "auth.oidc.two_factors", Env: "SHOP_AUTH_OIDC_TWO_FACTORS", Flag: "auth-oidc-two-factors",
+		Type: "bool", Desc: "The provider's sign-in counts as two factors", Bool: true,
+		Set:   func(v *values, raw string) error { return engine.ParseBool(raw, &v.AuthOIDCTwoFactors) },
+		IsSet: func(v *values) bool { return v.AuthOIDCTwoFactors },
+		Show:  func(v *values) any { return v.AuthOIDCTwoFactors },
+	},
+	{
 		Path: "server.addr", Env: "SHOP_SERVER_ADDR", Flag: "server-addr",
 		Type: "string", Desc: "Listen address", DefaultText: "localhost:8080", Quote: true,
 		Set:     func(v *values, raw string) error { return engine.ParseString(raw, &v.ServerAddr) },
@@ -521,6 +577,7 @@ type Auth interface {
 	AuthThrottle
 	AuthCookie
 	AuthPasskey
+	AuthOIDC
 }
 
 type authGroup struct {
@@ -538,6 +595,7 @@ type authGroup struct {
 	*authThrottleGroup
 	*authCookieGroup
 	*authPasskeyGroup
+	*authOIDCGroup
 }
 
 // AuthIssuer returns auth.issuer: Issuer: the name in tokens and authenticator apps
@@ -750,6 +808,42 @@ func (g *authPasskeyGroup) AuthPasskeyDomain() string { return g.r.cur.Load().Au
 // AuthPasskeyOrigins returns auth.passkey.origins: Origins passkeys may be used from; https://<domain> when empty
 func (g *authPasskeyGroup) AuthPasskeyOrigins() []string { return g.r.cur.Load().AuthPasskeyOrigins }
 
+// AuthOIDC is the auth.oidc group: Sign-in with an OpenID Connect provider
+type AuthOIDC interface {
+	AuthOIDCProvider() string
+	AuthOIDCIssuer() string
+	AuthOIDCClientID() string
+	AuthOIDCClientSecret() cfgx.Secret
+	AuthOIDCRedirectURL() string
+	AuthOIDCScopes() []string
+	AuthOIDCTwoFactors() bool
+}
+
+type authOIDCGroup struct{ r *root }
+
+// AuthOIDCProvider returns auth.oidc.provider: Provider's name, as in its sign-in method oidc_<provider>
+func (g *authOIDCGroup) AuthOIDCProvider() string { return g.r.cur.Load().AuthOIDCProvider }
+
+// AuthOIDCIssuer returns auth.oidc.issuer: Provider's issuer URL
+func (g *authOIDCGroup) AuthOIDCIssuer() string { return g.r.cur.Load().AuthOIDCIssuer }
+
+// AuthOIDCClientID returns auth.oidc.client_id: Client ID the provider gave the app
+func (g *authOIDCGroup) AuthOIDCClientID() string { return g.r.cur.Load().AuthOIDCClientID }
+
+// AuthOIDCClientSecret returns auth.oidc.client_secret: Client secret; empty for a public client
+func (g *authOIDCGroup) AuthOIDCClientSecret() cfgx.Secret {
+	return g.r.cur.Load().AuthOIDCClientSecret
+}
+
+// AuthOIDCRedirectURL returns auth.oidc.redirect_url: Callback URL the provider redirects to
+func (g *authOIDCGroup) AuthOIDCRedirectURL() string { return g.r.cur.Load().AuthOIDCRedirectURL }
+
+// AuthOIDCScopes returns auth.oidc.scopes: Scopes beyond openid; email and profile when empty
+func (g *authOIDCGroup) AuthOIDCScopes() []string { return g.r.cur.Load().AuthOIDCScopes }
+
+// AuthOIDCTwoFactors returns auth.oidc.two_factors: The provider's sign-in counts as two factors
+func (g *authOIDCGroup) AuthOIDCTwoFactors() bool { return g.r.cur.Load().AuthOIDCTwoFactors }
+
 // Server is the server group: Web server
 type Server interface {
 	ServerAddr() string
@@ -790,6 +884,7 @@ type AuthValues struct {
 	Throttle       AuthThrottleValues
 	Cookie         AuthCookieValues
 	Passkey        AuthPasskeyValues
+	OIDC           AuthOIDCValues
 }
 
 // AuthSessionValues holds the auth.session settings, for Test.
@@ -870,6 +965,17 @@ type AuthPasskeyValues struct {
 	Origins []string
 }
 
+// AuthOIDCValues holds the auth.oidc settings, for Test.
+type AuthOIDCValues struct {
+	Provider     string
+	Issuer       string
+	ClientID     string
+	ClientSecret cfgx.Secret
+	RedirectURL  string
+	Scopes       []string
+	TwoFactors   bool
+}
+
 // ServerValues holds the server settings, for Test.
 type ServerValues struct {
 	Addr  string
@@ -908,6 +1014,13 @@ func (tv *Values) load(v *values) {
 	tv.Auth.Cookie.Insecure = v.AuthCookieInsecure
 	tv.Auth.Passkey.Domain = v.AuthPasskeyDomain
 	tv.Auth.Passkey.Origins = v.AuthPasskeyOrigins
+	tv.Auth.OIDC.Provider = v.AuthOIDCProvider
+	tv.Auth.OIDC.Issuer = v.AuthOIDCIssuer
+	tv.Auth.OIDC.ClientID = v.AuthOIDCClientID
+	tv.Auth.OIDC.ClientSecret = v.AuthOIDCClientSecret
+	tv.Auth.OIDC.RedirectURL = v.AuthOIDCRedirectURL
+	tv.Auth.OIDC.Scopes = v.AuthOIDCScopes
+	tv.Auth.OIDC.TwoFactors = v.AuthOIDCTwoFactors
 	tv.Server.Addr = v.ServerAddr
 	tv.Server.Store = v.ServerStore
 }
@@ -944,6 +1057,13 @@ func (tv *Values) store(v *values) {
 	v.AuthCookieInsecure = tv.Auth.Cookie.Insecure
 	v.AuthPasskeyDomain = tv.Auth.Passkey.Domain
 	v.AuthPasskeyOrigins = tv.Auth.Passkey.Origins
+	v.AuthOIDCProvider = tv.Auth.OIDC.Provider
+	v.AuthOIDCIssuer = tv.Auth.OIDC.Issuer
+	v.AuthOIDCClientID = tv.Auth.OIDC.ClientID
+	v.AuthOIDCClientSecret = tv.Auth.OIDC.ClientSecret
+	v.AuthOIDCRedirectURL = tv.Auth.OIDC.RedirectURL
+	v.AuthOIDCScopes = tv.Auth.OIDC.Scopes
+	v.AuthOIDCTwoFactors = tv.Auth.OIDC.TwoFactors
 	v.ServerAddr = tv.Server.Addr
 	v.ServerStore = tv.Server.Store
 }
@@ -969,7 +1089,7 @@ func Test(edit func(v *Values)) *All {
 	tv.store(v)
 	r := &root{cur: engine.NewSnapshot(v)}
 	return &All{
-		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}, authPasskeyGroup: &authPasskeyGroup{r: r}},
+		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}, authPasskeyGroup: &authPasskeyGroup{r: r}, authOIDCGroup: &authOIDCGroup{r: r}},
 		serverGroup: &serverGroup{r: r},
 	}
 }
@@ -994,12 +1114,12 @@ type Serve struct {
 // them. The slice is a copy.
 func (c *Serve) Args() []string { return slices.Clone(c.args) }
 
-var keysServe = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}
+var keysServe = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38}
 
 func newServe(s *engine.Snapshot[values], w *engine.Writer[values], args []string) *Serve {
 	r := &root{cur: s}
 	return &Serve{
-		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}, authPasskeyGroup: &authPasskeyGroup{r: r}},
+		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}, authPasskeyGroup: &authPasskeyGroup{r: r}, authOIDCGroup: &authOIDCGroup{r: r}},
 		serverGroup: &serverGroup{r: r},
 		args:        slices.Clone(args),
 	}

@@ -3,10 +3,15 @@
 //	SHOP_AUTH_ISSUER=toyshop SHOP_AUTH_SECRET=$(openssl rand -hex 32) \
 //	SHOP_AUTH_PASSKEY_DOMAIN=localhost SHOP_AUTH_PASSKEY_ORIGINS=http://localhost:8080 \
 //	SHOP_AUTH_COOKIE_INSECURE=true \
+//	SHOP_AUTH_OIDC_PROVIDER=dev SHOP_AUTH_OIDC_ISSUER=http://localhost:5556 \
+//	SHOP_AUTH_OIDC_CLIENT_ID=shop SHOP_AUTH_OIDC_CLIENT_SECRET=… \
+//	SHOP_AUTH_OIDC_REDIRECT_URL=http://localhost:8080/sign-in/oidc/callback \
 //	SHOP_DEMO_PASSWORD='a long phrase of your own' SHOP_DEMO_MAIL=$(mktemp -d) go run .
 //
 // Passkeys are bound to a domain; on your own machine it is localhost, over
-// plain HTTP, which browsers allow for localhost alone.
+// plain HTTP, which browsers allow for localhost alone. The provider is any
+// OpenID Connect provider you run or register the shop with; a local one,
+// such as Dex, may use http://localhost.
 //
 // With SHOP_DEMO_PASSWORD set it seeds sara@toyshop.example, a member of
 // root, with that password. With SHOP_DEMO_MAIL set to a directory, mail is

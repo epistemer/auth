@@ -3,6 +3,24 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: OIDC in the schema and the shop (M8.3)
+
+- **Landed:** `authschema.OIDC()`, one provider's keys with pinned getter
+  names; the test app checks they meet `oidc.Config`. The shop declares a
+  provider, offers it as a first proof, and has `GET /sign-in/oidc` and
+  its callback; an unlinked identity signs up a new customer through
+  `Link`, with the email only when the provider verified it. Its
+  end-to-end test runs the whole round trip against a provider of its
+  own: a new customer signed up and in, the same user again, a provider
+  email equal to Omar's signing no one in as Omar, another `state`
+  refused.
+- **Docs:** README (OpenID Connect, what's not in v0.3), CHANGELOG,
+  `docs/api-review.md` for every identifier added since v0.2.0: §4's
+  word for word.
+- **Decided for you:** nothing.
+- **Next:** M8.4, the security review of M8.1–M8.3.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: the OIDC module (M8.2)
 
 - **Landed:** `auth/oidc`, a nested module on go-oidc v3.21.0 (its

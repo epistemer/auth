@@ -5,6 +5,7 @@ go 1.26.0
 replace (
 	github.com/epistemer/auth => ../..
 	github.com/epistemer/auth/authschema => ../../authschema
+	github.com/epistemer/auth/oidc => ../../oidc
 	github.com/epistemer/auth/passkey => ../../passkey
 )
 
@@ -13,14 +14,17 @@ tool github.com/epistemer/cfgx/cmd/cfgx
 require (
 	github.com/epistemer/auth v0.2.0
 	github.com/epistemer/auth/authschema v0.0.0-20261116012024-e2d8b21fccda
+	github.com/epistemer/auth/oidc v0.0.0
 	github.com/epistemer/auth/passkey v0.0.0
 	github.com/epistemer/cfgx v0.2.0
 	github.com/epistemer/errors v0.1.0
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/spf13/cobra v1.10.2
 	go.etcd.io/bbolt v1.5.0
 )
 
 require (
+	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
 	github.com/epistemer/i18n v0.3.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
@@ -37,6 +41,7 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/mod v0.42.0 // indirect
+	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect

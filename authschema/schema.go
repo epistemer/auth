@@ -4,10 +4,11 @@
 //	var Auth = authschema.Group()
 //	var Serve = dsl.Command("Serve").Uses(Auth /* , … */)
 //
-// The generated *settings.Serve then satisfies auth.Config. With passkeys,
-// nest their group in it, and the settings satisfy passkey.Config too:
+// The generated *settings.Serve then satisfies auth.Config. With passkeys
+// or a provider, nest their groups in it, and the settings satisfy
+// passkey.Config and oidc.Config too:
 //
-//	var Auth = authschema.Group(authschema.Passkey())
+//	var Auth = authschema.Group(authschema.Passkey(), authschema.OIDC())
 //
 // The group is
 // pinned with GoName("Auth"), and no key name holds an initialism, so the
@@ -85,6 +86,24 @@ func Group(members ...dsl.Member) *dsl.GroupDef {
 		dsl.Strings("trusted_origins", "Origins whose cross-origin requests are trusted"),
 	}
 	return dsl.Group("auth", "Sign-in and sessions", append(keys, members...)...).GoName("Auth")
+}
+
+// OIDC returns the group oidc, one OpenID Connect provider's settings for
+// auth/oidc (interface §4.12): provider, issuer, client_id, client_secret,
+// redirect_url, scopes and two_factors. oidc.New checks them; an app with
+// no provider leaves the group out. Every getter's name is pinned, so it
+// doesn't depend on the app's initialisms: AuthOIDCClientID,
+// AuthOIDCRedirectURL.
+func OIDC() *dsl.GroupDef {
+	return dsl.Group("oidc", "Sign-in with an OpenID Connect provider",
+		dsl.String("provider", "Provider's name, as in its sign-in method oidc_<provider>").Required(),
+		dsl.String("issuer", "Provider's issuer URL").Required(),
+		dsl.String("client_id", "Client ID the provider gave the app").GoName("ClientID").Required(),
+		dsl.Secret("client_secret", "Client secret; empty for a public client"),
+		dsl.String("redirect_url", "Callback URL the provider redirects to").GoName("RedirectURL").Required(),
+		dsl.Strings("scopes", "Scopes beyond openid; email and profile when empty"),
+		dsl.Bool("two_factors", "The provider's sign-in counts as two factors"),
+	).GoName("OIDC")
 }
 
 // Passkey returns the group passkey, for auth/passkey (interface §4.11):

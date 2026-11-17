@@ -10,9 +10,9 @@ The app owns its users. This package owns how they prove who they are:
   one engine, so throttling, audit events and protection against account
   enumeration exist once.
 - **Proofs:** passwords (argon2id, with a strength estimate), emailed or
-  texted codes and links, authenticator apps (TOTP), recovery codes, and
-  passkeys (`auth/passkey`, a module of its own). OpenID Connect comes as a
-  module after `v0.2.0`.
+  texted codes and links, authenticator apps (TOTP), recovery codes,
+  passkeys (`auth/passkey`) and OpenID Connect providers (`auth/oidc`),
+  each a module of its own.
 - **Sessions that record what was proven.** A session is verified or
   unverified, and remembers when each proof was made. Routes need a verified
   one unless they say otherwise, and a dangerous action can ask for a recent
@@ -37,6 +37,7 @@ page: the app's `Sender` delivers messages, and its handlers call the flows.
 go get github.com/epistemer/auth
 go get github.com/epistemer/auth/authschema # the cfgx schema fragment, for the app's settings
 go get github.com/epistemer/auth/passkey    # passkeys, if the app offers them
+go get github.com/epistemer/auth/oidc       # sign-in with an OpenID Connect provider
 ```
 
 Before `v1.0.0` the API may still change; [CHANGELOG.md](CHANGELOG.md) says
@@ -124,18 +125,47 @@ res, err := a.Finish(ctx, flow.Token)
 
 `passkey/passkeytest` is a software authenticator for an app's tests.
 
+### OpenID Connect
+
+`auth/oidc` signs in with a provider by the authorization code flow, with
+PKCE. An identity is linked to one user, never found by email; one no
+user holds comes back as `flow.Unlinked`, and the app signs up a new user
+with `Link`:
+
+```go
+google, err := oidc.New(settings) // authschema.Group(authschema.OIDC())
+a, err := auth.New(db, settings, directory, mailer,
+	auth.WithMethods(google),
+	auth.WithFirst(auth.MethodPassword, "oidc_google"),
+)
+
+flow, err := a.SignInWithout(ctx, auth.Cookie())
+ch, err := a.Challenge(ctx, flow.Token, "oidc_google")
+flow.Write(w)
+http.Redirect(w, r, ch.Options.(string), http.StatusFound)
+
+// on the callback route
+flow, err = a.Prove(ctx, token, oidc.Callback("google", r.URL.Query()))
+if flow.Unlinked != nil {
+	flow, err = a.Link(ctx, token, users.Create(flow.Unlinked)) // a new user
+}
+res, err := a.Finish(ctx, flow.Token)
+```
+
 The runnable examples on [pkg.go.dev](https://pkg.go.dev/github.com/epistemer/auth)
 cover signing in, stepping up, recovery and permissions, and
 [examples/shop](examples/shop) is a whole app: web and API sign-in,
-passkeys, a step-up before payouts, and an end-to-end test.
+passkeys, a provider with sign-up, a step-up before payouts, and an
+end-to-end test.
 
-## What's not in v0.2
+## What's not in v0.3
 
-OpenID Connect (a module after `v0.2.0`), permissions on single resources,
-API keys for machines, a breach-corpus lookup, drawing QR codes, handlers
-and pages, and signing in by emailed link alone. For passkeys: attestation
-trust, AAGUID names, related origins, conditional creation, extensions
-such as PRF, and accounts with a passkey and no password.
+Permissions on single resources, API keys for machines, a breach-corpus
+lookup, drawing QR codes, handlers and pages, and signing in by emailed
+link alone. For passkeys: attestation trust, AAGUID names, related
+origins, conditional creation, extensions such as PRF. For providers:
+logout, calling the provider's APIs, the `amr` claim, dynamic client
+registration, SAML, and linking by email.
 
 ## Where to read
 

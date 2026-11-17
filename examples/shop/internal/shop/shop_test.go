@@ -44,6 +44,7 @@ type world struct {
 	out   *shop.Outbox
 	clock *clock
 	shop  *shop.Shop
+	idp   *idp
 }
 
 // newWorld runs the shop on a TLS test server, over a store of its own,
@@ -51,11 +52,21 @@ type world struct {
 // root; Omar is a customer; Lina, a customer, has no email address and is
 // an analyst; Max is in root and has no email address.
 func newWorld(t *testing.T) *world {
+	// The shop's server starts first: the provider redirects back to it.
+	var handler http.Handler
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { handler.ServeHTTP(w, r) }))
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
+	idp := newIdP(t, c.now)
 	cfg := settings.Test(func(v *settings.Values) {
 		v.Auth.Issuer = "toyshop"
 		v.Auth.Secret = cfgx.NewSecret(strings.Repeat("s", 32))
 		v.Auth.Password.Memory, v.Auth.Password.Time = 19, 1
 		v.Auth.Passkey.Domain = "toyshop.example"
+		v.Auth.OIDC.Provider, v.Auth.OIDC.Issuer = "test", idp.issuer
+		v.Auth.OIDC.ClientID, v.Auth.OIDC.ClientSecret = idpClient, cfgx.NewSecret(idpSecret)
+		v.Auth.OIDC.RedirectURL = srv.URL + "/sign-in/oidc/callback"
 	})
 	db, err := bolt.Open(filepath.Join(t.TempDir(), "shop.db"), 0o600, nil)
 	if err != nil {
@@ -69,7 +80,6 @@ func newWorld(t *testing.T) *world {
 	dir.Add("u4", "max", "Max", "")
 	// The clock starts now: the cookie jar expires cookies by the real clock,
 	// so a fixed date makes every flow cookie stale once that date has passed.
-	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
 	out := shop.NewOutbox()
 	s, err := shop.New(db, cfg, dir, out, auth.WithClock(c.now))
 	if err != nil {
@@ -95,9 +105,8 @@ func newWorld(t *testing.T) *world {
 			t.Fatal(err)
 		}
 	}
-	srv := httptest.NewTLSServer(s.Handler())
-	t.Cleanup(srv.Close)
-	return &world{t: t, srv: srv, out: out, clock: c, shop: s}
+	handler = s.Handler()
+	return &world{t: t, srv: srv, out: out, clock: c, shop: s, idp: idp}
 }
 
 // browser is a client with a cookie jar, as a browser would be.
@@ -436,4 +445,50 @@ func TestPasskey(t *testing.T) {
 	if code, body := w.postJSON(other, "/passkey/prove", stranger.Get(optionsOf(t, body))); code != http.StatusUnauthorized || body["code"] != "errors.auth.bad_credentials" {
 		t.Errorf("a stranger's passkey: %d %v", code, body)
 	}
+}
+
+// M8.3's done-when: the example signs in through a provider and links a
+// new user. A new customer comes back from the provider, is signed up and
+// signed in; signing in again finds the same user; a callback with another
+// state is refused; and the provider's email isn't how a user is found.
+func TestOIDC(t *testing.T) {
+	w := newWorld(t)
+	w.idp.email = "nina@mail.example"
+	nina := w.browser()
+	code, body := w.getJSON(nina, "/sign-in/oidc")
+	if code != 200 || body["verified"] != false {
+		t.Fatalf("a new customer: %d %v", code, body)
+	}
+	user, _ := body["user"].(string)
+	if !strings.HasPrefix(user, "u-") {
+		t.Fatalf("user %q", user)
+	}
+	ids, _ := w.shop.Auth.Identities(context.Background(), auth.UserID(user))
+	if len(ids) != 1 || ids[0].Label != "nina@mail.example" {
+		t.Errorf("identities: %+v", ids)
+	}
+	if code := w.get(nina, "/me"); code != 200 {
+		t.Errorf("/me: %d", code)
+	}
+	// Again, from another browser: the same user.
+	if code, body := w.getJSON(w.browser(), "/sign-in/oidc"); code != 200 || body["user"] != user {
+		t.Errorf("again: %d %v", code, body)
+	}
+	// Omar's email at the provider doesn't sign anyone in as Omar.
+	w.idp.sub, w.idp.email = "someone-else", "omar@toyshop.example"
+	if code, body := w.getJSON(w.browser(), "/sign-in/oidc"); code != 200 || body["user"] == "u2" || body["user"] == user {
+		t.Errorf("by email: %d %v", code, body)
+	}
+	// A callback with another state is refused.
+	w.idp.badState = true
+	if code, body := w.getJSON(w.browser(), "/sign-in/oidc"); code != http.StatusUnauthorized {
+		t.Errorf("another state: %d %v", code, body)
+	}
+}
+
+// getJSON follows redirects, as a browser does, and decodes the last reply.
+func (w *world) getJSON(c *http.Client, path string) (int, map[string]any) {
+	w.t.Helper()
+	r, _ := http.NewRequest("GET", w.srv.URL+path, nil)
+	return w.do(c, r)
 }

@@ -6,6 +6,8 @@ package shop
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/epistemer/auth"
 	"github.com/epistemer/auth/access"
+	"github.com/epistemer/auth/oidc"
 	"github.com/epistemer/auth/passkey"
 )
 
@@ -40,6 +43,27 @@ type Directory struct {
 // NewDirectory returns an empty directory.
 func NewDirectory() *Directory {
 	return &Directory{users: map[string]auth.User{}, emails: map[auth.UserID]string{}}
+}
+
+// Create adds a user for an identity a provider proved, as a sign-up: a
+// new ID, never an existing user found by the email. The email becomes the
+// user's address and login only when the provider verified it.
+func (d *Directory) Create(id auth.Identity) auth.UserID {
+	b := make([]byte, 8)
+	rand.Read(b)
+	uid := auth.UserID("u-" + hex.EncodeToString(b))
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	login, email, name := string(uid), "", "New customer"
+	if id.EmailVerified && id.Email != "" {
+		email, name = id.Email, id.Email
+		if _, taken := d.users[id.Email]; !taken {
+			login = id.Email
+		}
+	}
+	d.users[login] = auth.User{ID: uid, Name: name}
+	d.emails[uid] = email
+	return uid
 }
 
 // Add adds a user under a login, with an email address or none.
@@ -119,18 +143,22 @@ func (s *Shop) policy(ctx context.Context, u auth.User) auth.Policy {
 type Shop struct {
 	Auth   *auth.Auth
 	Access *access.Access
+
+	dir      *Directory
+	provider string // the provider's name, as in Callback
 }
 
-// Config is what the shop reads: auth's keys and the passkeys'. The
-// settings cfgx generates from authschema.Group(authschema.Passkey())
-// satisfy it.
+// Config is what the shop reads: auth's keys, the passkeys' and its
+// provider's. The settings cfgx generates from
+// authschema.Group(authschema.Passkey(), authschema.OIDC()) satisfy it.
 type Config interface {
 	auth.Config
 	passkey.Config
+	oidc.Config
 }
 
 // New builds the shop over a store, a config, a directory and an outbox.
-func New(db *bolt.DB, cfg Config, dir auth.Directory, out auth.Sender, opts ...auth.Option) (*Shop, error) {
+func New(db *bolt.DB, cfg Config, dir *Directory, out auth.Sender, opts ...auth.Option) (*Shop, error) {
 	ac, err := access.New(db)
 	if err != nil {
 		return nil, err
@@ -139,13 +167,17 @@ func New(db *bolt.DB, cfg Config, dir auth.Directory, out auth.Sender, opts ...a
 	if err != nil {
 		return nil, err
 	}
-	s := &Shop{Access: ac}
+	idp, err := oidc.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	s := &Shop{Access: ac, dir: dir, provider: cfg.AuthOIDCProvider()}
 	// Refusals by Load and Require answer like every other error: JSON.
 	reject := auth.WithReject(fail)
 	base := []auth.Option{
 		auth.WithPolicy(s.policy), reject,
 		// A passkey signs in alone, or stands as the second proof.
-		auth.WithMethods(pk), auth.WithFirst(auth.MethodPassword, auth.MethodPasskey),
+		auth.WithMethods(pk, idp), auth.WithFirst(auth.MethodPassword, auth.MethodPasskey, idp.Name()),
 	}
 	s.Auth, err = auth.New(db, cfg, dir, out, append(base, opts...)...)
 	if err != nil {
@@ -179,6 +211,12 @@ func (s *Shop) Handler() http.Handler {
 	mux.Handle("POST /passkey/prove", web(http.HandlerFunc(s.passkeyProve)))
 	mux.Handle("POST /passkey/enroll", web(a.Require()(http.HandlerFunc(s.passkeyEnroll))))
 	mux.Handle("POST /passkey/enroll/finish", web(a.Require()(http.HandlerFunc(s.passkeyEnrolled))))
+
+	// The provider: the sign-in button's link, and its redirect back. The
+	// callback is a GET that changes state; state binds it to the flow in
+	// the flow cookie, and it goes through Load as every route does.
+	mux.Handle("GET /sign-in/oidc", web(http.HandlerFunc(s.oidcStart)))
+	mux.Handle("GET /sign-in/oidc/callback", web(http.HandlerFunc(s.oidcCallback)))
 
 	// The API: bearer tokens, no cookies, no cross-origin check. Its
 	// sign-in goes through Load too, which reads the client's address: the
@@ -420,6 +458,46 @@ func credential(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 		return nil, false
 	}
 	return body, true
+}
+
+// oidcStart starts a sign-in with the provider and redirects to it.
+func (s *Shop) oidcStart(w http.ResponseWriter, r *http.Request) {
+	f, err := s.Auth.SignInWithout(r.Context(), auth.Cookie())
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	ch, err := s.Auth.Challenge(r.Context(), f.Token, "oidc_"+s.provider)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	f.Write(w)
+	http.Redirect(w, r, ch.Options.(string), http.StatusFound)
+}
+
+// oidcCallback proves the provider's redirect. An identity no user holds
+// signs up a new customer, linked to it; the email is used only when the
+// provider verified it, and only as the new user's own (§5.14.7).
+func (s *Shop) oidcCallback(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	token, ok := s.flowFor(w, r, auth.PurposeSignIn)
+	if !ok {
+		return
+	}
+	f, err := s.Auth.Prove(ctx, token, oidc.Callback(s.provider, r.URL.Query()))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	if f.Unlinked != nil {
+		// A real shop shows its sign-up step here: terms, a name.
+		if f, err = s.Auth.Link(ctx, token, s.dir.Create(*f.Unlinked)); err != nil {
+			fail(w, r, err)
+			return
+		}
+	}
+	s.finish(w, r, f)
 }
 
 func (s *Shop) signOut(w http.ResponseWriter, r *http.Request) {

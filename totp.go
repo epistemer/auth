@@ -267,7 +267,7 @@ func (a *Auth) useTOTP(tx *bolt.Tx, user UserID, code string, ok *bool) error {
 
 // enrollTOTP stores the authenticator app an Enroll flow proved, in tx
 // (§5.4.4), keyed by a random ID, never its label.
-func (a *Auth) enrollTOTP(tx *bolt.Tx, cur *storepb.Flow) error {
+func (a *Auth) enrollTOTP(tx *bolt.Tx, cur *storepb.Flow, label string) error {
 	if len(cur.Pending) == 0 {
 		return errChanged
 	}
@@ -291,7 +291,7 @@ func (a *Auth) enrollTOTP(tx *bolt.Tx, cur *storepb.Flow) error {
 	id := make([]byte, 16)
 	rand.Read(id)
 	now := a.now().UnixNano()
-	c := &storepb.Credential{Method: MethodTOTP, Key: id, Data: data, Label: "Authenticator app", Added: now, Used: now}
+	c := &storepb.Credential{Method: MethodTOTP, Key: id, Data: data, Label: label, Added: now, Used: now}
 	return store.Put(tx, store.Credentials, credentialKey(UserID(cur.UserId), MethodTOTP, id), c)
 }
 

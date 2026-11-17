@@ -58,7 +58,7 @@ func (a *Auth) Enroll(ctx context.Context, s *Session, method string) (Flow, err
 	if s == nil {
 		return Flow{}, ErrNoSession
 	}
-	if !enrollable[method] {
+	if !enrollable[method] && a.methods[method] == nil {
 		return Flow{}, ErrMethodUnavailable
 	}
 	sess, u, err := a.liveSession(ctx, s)
@@ -76,6 +76,20 @@ func (a *Auth) Enroll(ctx context.Context, s *Session, method string) (Flow, err
 				return Flow{}, err
 			}
 			a.record(ctx, Event{Kind: "factor.refused", User: u.ID, Session: s.ID, Method: method, Reason: "no_factor"})
+			return Flow{}, ErrMethodUnavailable
+		}
+	}
+	// A method whose section limits how many a user holds (§5.13.2).
+	if limit := methodLimit[method]; limit > 0 {
+		var n int
+		if err := a.db.View(func(tx *bolt.Tx) (err error) {
+			n, err = countMethodTx(tx, u.ID, method)
+			return err
+		}); err != nil {
+			return Flow{}, err
+		}
+		if n >= limit {
+			a.record(ctx, Event{Kind: "factor.refused", User: u.ID, Session: s.ID, Method: method, Reason: "limit"})
 			return Flow{}, ErrMethodUnavailable
 		}
 	}
@@ -177,7 +191,10 @@ func (a *Auth) finishEnroll(ctx context.Context, hash []byte, rec *storepb.Flow,
 	case MethodPassword:
 		return a.changePassword(ctx, hash, sess, u, o)
 	case MethodTOTP, MethodRecoveryCode:
-		return a.addFactor(ctx, hash, sess, u)
+		return a.addFactor(ctx, hash, sess, u, o)
+	}
+	if a.methods[rec.EnrollMethod] != nil {
+		return a.addFactor(ctx, hash, sess, u, o)
 	}
 	return Result{}, fmt.Errorf("auth: enrolling %q: %w", rec.EnrollMethod, ErrMethodUnavailable)
 }
@@ -251,12 +268,12 @@ func (a *Auth) changePassword(ctx context.Context, hash []byte, sess *storepb.Se
 
 // addFactor stores the factor an Enroll flow proved, checking §5.1.9 again
 // in the same transaction, and sends MsgFactorAdded.
-func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session, u User) (Result, error) {
+func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session, u User, o finishOptions) (Result, error) {
 	out := new(storepb.Session)
-	var method string
+	var method, refused string
 	var codes []string
 	err := a.db.Update(func(tx *bolt.Tx) error {
-		codes = nil
+		codes, refused = nil, ""
 		if err := store.Get(tx, store.Sessions, []byte(sess.Id), out); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return errNoSession
@@ -273,10 +290,15 @@ func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session
 		if err := store.Get(tx, store.Flows, hash, cur); err != nil {
 			return err
 		}
+		method = cur.EnrollMethod
+		if a.methods[method] != nil {
+			var err error
+			codes, refused, err = a.enrollModuleTx(tx, hash, cur, o)
+			return err
+		}
 		if _, err := a.spend(tx, hash); err != nil {
 			return err
 		}
-		method = cur.EnrollMethod
 		switch method {
 		case MethodTOTP:
 			// The first factor brings a set of recovery codes (§5.4.6).
@@ -284,7 +306,7 @@ func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session
 			if err != nil {
 				return err
 			}
-			if err := a.enrollTOTP(tx, cur); err != nil {
+			if err := a.enrollTOTP(tx, cur, factorLabel(o, "Authenticator app")); err != nil {
 				return err
 			}
 			if len(before) == 0 {
@@ -316,6 +338,10 @@ func (a *Auth) addFactor(ctx context.Context, hash []byte, sess *storepb.Session
 		return Result{}, ErrNotReady
 	case err != nil:
 		return Result{}, err
+	case refused != "":
+		// Rule 10 of §5.5: the flow stays, offering the method again.
+		a.record(ctx, Event{Kind: "factor.refused", User: u.ID, Session: SessionID(sess.Id), Method: method, Reason: refused})
+		return Result{}, ErrBadCredentials
 	}
 	a.record(ctx, Event{Kind: "factor.added", User: u.ID, Session: SessionID(sess.Id), Method: method})
 	a.notify(ctx, u, MsgFactorAdded)

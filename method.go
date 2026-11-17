@@ -1,6 +1,10 @@
 package auth
 
-import "context"
+import (
+	"context"
+	"regexp"
+	"time"
+)
 
 // Method is a way of proving who a user is, from a module (interface §4.9).
 // The engine, not the method, applies throttling, events, the policy and
@@ -20,6 +24,7 @@ type MethodInput struct {
 	Credentials []Credential // the user's credentials for this method
 	Find        func(key []byte) (UserID, *Credential, error)
 	Lookup      func(id UserID) (User, []Credential, error)
+	Now         time.Time // the engine's clock (WithClock)
 }
 
 // Credential is a method's record for one user.
@@ -42,3 +47,23 @@ type Identity struct {
 	Issuer, Subject, Email string
 	EmailVerified          bool
 }
+
+// Refuse is what a module's Verify returns for a proof it refuses. It
+// wraps ErrBadCredentials and its Error() is fixed: the reason is in no
+// message. reason is the event's Reason and matches [a-z][a-z0-9_]{0,31};
+// any other is recorded as "refused". The engine answers the caller with
+// plain ErrBadCredentials (§5.5).
+func Refuse(reason string) error {
+	if !reasonRE.MatchString(reason) {
+		reason = "refused"
+	}
+	return refusal{reason}
+}
+
+var reasonRE = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+
+type refusal struct{ reason string }
+
+func (refusal) Error() string    { return "auth: the method refused the proof" }
+func (refusal) Unwrap() error    { return ErrBadCredentials }
+func (r refusal) String() string { return r.Error() }

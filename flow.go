@@ -39,11 +39,15 @@ const (
 	MethodEmailLink    = "email_link"
 	MethodTOTP         = "totp"
 	MethodRecoveryCode = "recovery_code"
+	// MethodPasskey is auth/passkey's method. Its credentials are enrolled
+	// second factors (§5.13.12).
+	MethodPasskey = "passkey"
 )
 
 // secondMethods are the methods that count as a second proof (§5.7.2).
 var secondMethods = map[string]bool{
 	MethodTOTP: true, MethodRecoveryCode: true, MethodEmailCode: true, MethodSMSCode: true,
+	MethodPasskey: true,
 }
 
 // Flow is a flow's state as the client may see it.
@@ -126,11 +130,17 @@ type finishOptions struct {
 	newPassword *string
 	remember    bool
 	device      *string
+	label       *string
 }
 
 // NewPassword sets the password a Recover, an Accept or an Enroll of the
 // password stores.
 func NewPassword(pw string) FinishOption { return func(o *finishOptions) { o.newPassword = &pw } }
+
+// FactorLabel names the factor an Enroll adds, as Factors shows it. It is
+// cut at 64 characters, control characters are dropped, and an empty label
+// gives the method's own. The password and recovery codes ignore it.
+func FactorLabel(label string) FinishOption { return func(o *finishOptions) { o.label = &label } }
 
 // Remember gives a SignIn's session the longer idle lifetime.
 func Remember() FinishOption { return func(o *finishOptions) { o.remember = true } }
@@ -251,6 +261,14 @@ type view struct {
 // look at the user at all, so a known and an unknown login answer alike
 // (§5.1.3). sess is the bound session of a StepUp; nil loads it.
 func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Session) (view, error) {
+	v, err := a.viewOf(ctx, rec, sess)
+	// A module method past its caps is no longer offered in this flow
+	// (§5.5.9).
+	v.offers = slices.DeleteFunc(v.offers, func(m string) bool { return a.methods[m] != nil && spent(rec, m) })
+	return v, err
+}
+
+func (a *Auth) viewOf(ctx context.Context, rec *storepb.Flow, sess *storepb.Session) (view, error) {
 	proofs := rec.Proofs
 	if rec.UserId != "" && len(proofs) > 0 {
 		var added int64
@@ -269,6 +287,9 @@ func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Sessio
 	switch Purpose(rec.Purpose) {
 	case PurposeSignIn:
 		if !proven(isFirst) {
+			if rec.Without {
+				return view{offers: a.moduleFirst()}, nil
+			}
 			return view{offers: slices.Clone(a.first)}, nil
 		}
 		u, err := a.user(ctx, UserID(rec.UserId))
@@ -446,6 +467,11 @@ func countsAsSecond(m string, enrolled []string) bool {
 // address no longer is, also when it was proved before the enrolment
 // (§5.7.2).
 func (a *Auth) twoFactors(proofs []*storepb.Factor, enrolled []string) bool {
+	// A module's proof that says Verified is two factors on its own
+	// (§5.5.1).
+	if slices.ContainsFunc(proofs, func(p *storepb.Factor) bool { return p.Verified }) {
+		return true
+	}
 	second := func(m string) bool { return countsAsSecond(m, enrolled) }
 	for i, p := range proofs {
 		if !slices.Contains(a.first, p.Method) {
@@ -478,14 +504,16 @@ func current(proofs []*storepb.Factor, added int64) []*storepb.Factor {
 // directory has. Factors arrive with M4; until then every user is the
 // second case.
 func (a *Auth) seconds(ctx context.Context, u User) ([]string, error) {
-	factors, err := a.factorMethods(u.ID)
-	if err != nil {
-		return nil, err
+	enrolled, err := a.enrolled(u.ID)
+	if err != nil || len(enrolled) == 0 {
+		if err != nil {
+			return nil, err
+		}
+		return a.addresses(ctx, u)
 	}
-	if len(factors) > 0 {
-		return factors, nil
-	}
-	return a.addresses(ctx, u)
+	// With a factor enrolled a code to an address is no second method
+	// (§5.7.2), also when the factor's module isn't given.
+	return a.factorMethods(u.ID)
 }
 
 // factorMethods are a user's enrolled factors and, with them, a recovery
@@ -497,6 +525,8 @@ func (a *Auth) factorMethods(id UserID) ([]string, error) {
 		if out, err = enrolledTx(tx, id); err != nil || len(out) == 0 {
 			return err
 		}
+		// A module's factor is offered only while its module is given.
+		out = slices.DeleteFunc(out, func(m string) bool { return !a.available(m) })
 		left, err := a.hasRecovery(tx, id)
 		if left {
 			out = append(out, MethodRecoveryCode)
@@ -592,6 +622,9 @@ func (a *Auth) Prove(ctx context.Context, token string, p Proof) (Flow, error) {
 	}
 	if p == nil || !slices.Contains(v.offers, p.Method()) {
 		return a.flowOut(token, rec, v), ErrMethodUnavailable
+	}
+	if m := a.methods[p.Method()]; m != nil {
+		return a.proveModule(ctx, token, hash, rec, v, m, p)
 	}
 	s, ok := p.(secret)
 	if !ok {
@@ -739,6 +772,7 @@ func (a *Auth) addProofIf(hash []byte, f *storepb.Factor, check func(tx *bolt.Tx
 		// factor, with the later time.
 		if i := slices.IndexFunc(rec.Proofs, func(p *storepb.Factor) bool { return p.Method == f.Method }); i >= 0 {
 			rec.Proofs[i].At = max(rec.Proofs[i].At, f.At)
+			rec.Proofs[i].Verified = rec.Proofs[i].Verified || f.Verified
 		} else {
 			rec.Proofs = append(rec.Proofs, f)
 		}

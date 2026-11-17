@@ -86,7 +86,9 @@ type Factor struct {
 	// The address the proof travelled through, for codes and links, so two
 	// proofs through one address count as one (interface §5.7.2). It is the
 	// SHA-256 of the normalized address, never the address.
-	Channel       []byte `protobuf:"bytes,3,opt,name=channel,proto3" json:"channel,omitempty"`
+	Channel []byte `protobuf:"bytes,3,opt,name=channel,proto3" json:"channel,omitempty"`
+	// A module's proof that counts as two factors on its own (§5.5.1).
+	Verified      bool `protobuf:"varint,4,opt,name=verified,proto3" json:"verified,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -140,6 +142,13 @@ func (x *Factor) GetChannel() []byte {
 		return x.Channel
 	}
 	return nil
+}
+
+func (x *Factor) GetVerified() bool {
+	if x != nil {
+		return x.Verified
+	}
+	return false
 }
 
 // Client is the client as seen when a record was made.
@@ -543,12 +552,18 @@ type Flow struct {
 	Codes        []*CodeState           `protobuf:"bytes,10,rep,name=codes,proto3" json:"codes,omitempty"`
 	LinkHash     []byte                 `protobuf:"bytes,11,opt,name=link_hash,json=linkHash,proto3" json:"link_hash,omitempty"`             // Recover and Accept: the link or invitation
 	EnrollMethod string                 `protobuf:"bytes,12,opt,name=enroll_method,json=enrollMethod,proto3" json:"enroll_method,omitempty"` // Enroll: the method being added
-	Pending      []byte                 `protobuf:"bytes,13,opt,name=pending,proto3" json:"pending,omitempty"`                               // Enroll: the sealed credential awaiting proof
+	Pending      []byte                 `protobuf:"bytes,13,opt,name=pending,proto3" json:"pending,omitempty"`                               // Enroll: TOTP's sealed secret, or a module's Credential, awaiting Finish
 	MethodState  map[string][]byte      `protobuf:"bytes,14,rep,name=method_state,json=methodState,proto3" json:"method_state,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	NoUser       bool                   `protobuf:"varint,15,opt,name=no_user,json=noUser,proto3" json:"no_user,omitempty"` // the login didn't resolve; kept to answer alike
 	// The SHA-256 of the device token the request presented, so a token
 	// replaced since verifies nothing (review 0010).
-	DeviceToken   []byte `protobuf:"bytes,16,opt,name=device_token,json=deviceToken,proto3" json:"device_token,omitempty"`
+	DeviceToken []byte `protobuf:"bytes,16,opt,name=device_token,json=deviceToken,proto3" json:"device_token,omitempty"`
+	// SignInWithout: the flow names no login; a module's proof names the user.
+	Without bool `protobuf:"varint,17,opt,name=without,proto3" json:"without,omitempty"`
+	// A module method's Challenges and refused proofs in this flow, by method
+	// (§5.5.9).
+	Challenges    map[string]uint32 `protobuf:"bytes,18,rep,name=challenges,proto3" json:"challenges,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	Refusals      map[string]uint32 `protobuf:"bytes,19,rep,name=refusals,proto3" json:"refusals,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -691,6 +706,27 @@ func (x *Flow) GetNoUser() bool {
 func (x *Flow) GetDeviceToken() []byte {
 	if x != nil {
 		return x.DeviceToken
+	}
+	return nil
+}
+
+func (x *Flow) GetWithout() bool {
+	if x != nil {
+		return x.Without
+	}
+	return false
+}
+
+func (x *Flow) GetChallenges() map[string]uint32 {
+	if x != nil {
+		return x.Challenges
+	}
+	return nil
+}
+
+func (x *Flow) GetRefusals() map[string]uint32 {
+	if x != nil {
+		return x.Refusals
 	}
 	return nil
 }
@@ -1232,11 +1268,12 @@ var File_auth_records_proto protoreflect.FileDescriptor
 
 const file_auth_records_proto_rawDesc = "" +
 	"\n" +
-	"\x12auth_records.proto\x12\rauth.store.v1\"J\n" +
+	"\x12auth_records.proto\x12\rauth.store.v1\"f\n" +
 	"\x06Factor\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x0e\n" +
 	"\x02at\x18\x02 \x01(\x03R\x02at\x12\x18\n" +
-	"\achannel\x18\x03 \x01(\fR\achannel\";\n" +
+	"\achannel\x18\x03 \x01(\fR\achannel\x12\x1a\n" +
+	"\bverified\x18\x04 \x01(\bR\bverified\";\n" +
 	"\x06Client\x12\x12\n" +
 	"\x04addr\x18\x01 \x01(\fR\x04addr\x12\x1d\n" +
 	"\n" +
@@ -1277,7 +1314,7 @@ const file_auth_records_proto_rawDesc = "" +
 	"\x04sent\x18\x04 \x01(\x03R\x04sent\x12\x18\n" +
 	"\aexpires\x18\x05 \x01(\x03R\aexpires\x12\x14\n" +
 	"\x05tries\x18\x06 \x01(\rR\x05tries\x12\x14\n" +
-	"\x05burnt\x18\a \x01(\bR\x05burnt\"\xf8\x04\n" +
+	"\x05burnt\x18\a \x01(\bR\x05burnt\"\x92\a\n" +
 	"\x04Flow\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\x05R\apurpose\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
@@ -1296,10 +1333,21 @@ const file_auth_records_proto_rawDesc = "" +
 	"\apending\x18\r \x01(\fR\apending\x12G\n" +
 	"\fmethod_state\x18\x0e \x03(\v2$.auth.store.v1.Flow.MethodStateEntryR\vmethodState\x12\x17\n" +
 	"\ano_user\x18\x0f \x01(\bR\x06noUser\x12!\n" +
-	"\fdevice_token\x18\x10 \x01(\fR\vdeviceToken\x1a>\n" +
+	"\fdevice_token\x18\x10 \x01(\fR\vdeviceToken\x12\x18\n" +
+	"\awithout\x18\x11 \x01(\bR\awithout\x12C\n" +
+	"\n" +
+	"challenges\x18\x12 \x03(\v2#.auth.store.v1.Flow.ChallengesEntryR\n" +
+	"challenges\x12=\n" +
+	"\brefusals\x18\x13 \x03(\v2!.auth.store.v1.Flow.RefusalsEntryR\brefusals\x1a>\n" +
 	"\x10MethodStateEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"\x8a\x01\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
+	"\x0fChallengesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\x1a;\n" +
+	"\rRefusalsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\"\x8a\x01\n" +
 	"\n" +
 	"Credential\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x10\n" +
@@ -1361,7 +1409,7 @@ func file_auth_records_proto_rawDescGZIP() []byte {
 }
 
 var file_auth_records_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_auth_records_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_auth_records_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_auth_records_proto_goTypes = []any{
 	(Carrier)(0),         // 0: auth.store.v1.Carrier
 	(*Factor)(nil),       // 1: auth.store.v1.Factor
@@ -1378,6 +1426,8 @@ var file_auth_records_proto_goTypes = []any{
 	(*Counter)(nil),      // 12: auth.store.v1.Counter
 	(*AccessGroup)(nil),  // 13: auth.store.v1.AccessGroup
 	nil,                  // 14: auth.store.v1.Flow.MethodStateEntry
+	nil,                  // 15: auth.store.v1.Flow.ChallengesEntry
+	nil,                  // 16: auth.store.v1.Flow.RefusalsEntry
 }
 var file_auth_records_proto_depIdxs = []int32{
 	0,  // 0: auth.store.v1.Session.carrier:type_name -> auth.store.v1.Carrier
@@ -1387,11 +1437,13 @@ var file_auth_records_proto_depIdxs = []int32{
 	1,  // 4: auth.store.v1.Flow.proofs:type_name -> auth.store.v1.Factor
 	5,  // 5: auth.store.v1.Flow.codes:type_name -> auth.store.v1.CodeState
 	14, // 6: auth.store.v1.Flow.method_state:type_name -> auth.store.v1.Flow.MethodStateEntry
-	7,  // [7:7] is the sub-list for method output_type
-	7,  // [7:7] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	15, // 7: auth.store.v1.Flow.challenges:type_name -> auth.store.v1.Flow.ChallengesEntry
+	16, // 8: auth.store.v1.Flow.refusals:type_name -> auth.store.v1.Flow.RefusalsEntry
+	9,  // [9:9] is the sub-list for method output_type
+	9,  // [9:9] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_auth_records_proto_init() }
@@ -1405,7 +1457,7 @@ func file_auth_records_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_records_proto_rawDesc), len(file_auth_records_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

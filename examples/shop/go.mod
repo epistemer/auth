@@ -12,7 +12,7 @@ replace (
 tool github.com/epistemer/cfgx/cmd/cfgx
 
 require (
-	github.com/epistemer/auth v0.2.0
+	github.com/epistemer/auth v0.3.0
 	github.com/epistemer/auth/authschema v0.0.0-20261116012024-e2d8b21fccda
 	github.com/epistemer/auth/oidc v0.0.0
 	github.com/epistemer/auth/passkey v0.0.0

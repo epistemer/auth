@@ -143,7 +143,7 @@ locked on 2026-11-17.
 | ☑ | M8.2 | `auth/oidc` on go-oidc v3.21.0 and x/oauth2, with a test provider; CI runs it | §5.14 holds, each rule with a test that fails without it; the core's module graph is unchanged |
 | ☑ | M8.3 | `authschema.OIDC()`; the shop signs in with a test provider; README, CHANGELOG, `docs/api-review.md` | The example's end-to-end test signs in through a provider and links a new user; every new identifier checked against the locked section |
 | ☑ | M8.4 | A security review of M8.1–M8.3 by the other model family at its highest effort | Its findings are handled or recorded |
-| ☐ | M8.5 | Tags `v0.3.0`, `authschema/v0.3.0`, `oidc/v0.3.0`; the skill and epistemer's global CLAUDE.md | A copy of the example with no `replace` builds against the tags and passes its end-to-end test |
+| ☑ | M8.5 | Tags `v0.3.0`, `authschema/v0.3.0`, `oidc/v0.3.0`; the skill and epistemer's global CLAUDE.md | A copy of the example with no `replace` builds against the tags and passes its end-to-end test |
 
 ## After v0.3.0
 

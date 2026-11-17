@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/epistemer/auth v0.2.0
+	github.com/epistemer/auth v0.3.0
 	github.com/epistemer/cfgx v0.2.0
 	github.com/go-jose/go-jose/v4 v4.1.4
 	golang.org/x/oauth2 v0.38.0
@@ -19,7 +19,3 @@ require (
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )
-
-// Until the core's v0.3.0 is tagged (ADR 0004), the module builds against
-// the core beside it.
-replace github.com/epistemer/auth => ../

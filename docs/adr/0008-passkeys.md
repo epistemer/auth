@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Accepted for what is Claude's to decide; the API it implies waits for epistemer's lock of [interface-passkey.md](../interface-passkey.md) |
+| Status | Accepted. epistemer locked the API it implies on 2026-11-17, as recommended: [interface.md](../interface.md) A21 (D27–D36, §4.11, §5.13) |
 | Date | 2026-11-17 |
 | Roadmap item | M7.0 |
 | Deciders | Claude, as owner. The API choices (§"What waits on epistemer") are epistemer's |

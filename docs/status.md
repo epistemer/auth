@@ -3,6 +3,22 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: passkeys locked (M7.0 done)
+
+- **Landed:** you locked the passkey section with every default. It is
+  folded into [interface.md](interface.md) as amendment A21: P1–P10 are
+  decisions D27–D36 of §3, the module is §4.11 and §5.13, the example
+  §6.6, and the changes to §4.2, §4.3, §4.9, §5.1.3, §5.5, §7 and §9 are
+  made in place. interface-passkey.md now only points there.
+- **Fixed:** the shop example's end-to-end test started its clock on
+  2026-11-16, while the cookie jar expires cookies by the real clock, so
+  from today it dropped the flow cookie and every sign-in failed with
+  `ErrFlowExpired`. The test's clock now starts at the real time. Only
+  the test changed.
+- **Decided for you:** nothing.
+- **Next:** M7.1, the engine drives modules.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: the passkey design (M7.0)
 
 - **Landed:** the roadmap's M7 for `v0.2.0` (M7.0–M7.5), with what the

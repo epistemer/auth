@@ -3,6 +3,17 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: OIDC locked (M8.0 done)
+
+- **Landed:** you locked the OIDC section with every default. It is folded
+  into [interface.md](interface.md) as amendment A25: O1–O9 are D37–D45 of
+  §3, the module is §4.12 and §5.14, the example §6.7, and the changes to
+  §4.3, §4.5, §4.9, §5.5, §5.7.2, §7 and §9 are made in place.
+  interface-oidc.md now only points there.
+- **Decided for you:** nothing.
+- **Next:** M8.1, the core.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: v0.2.0 released, and the OIDC design (M7.5, M8.0)
 
 - **Landed:** v0.2.0 is released: `v0.2.0` (ce7fe00), then

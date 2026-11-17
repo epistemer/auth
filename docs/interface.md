@@ -9,9 +9,10 @@
 > The design and the options it rejected are in
 > [ADR 0001](adr/0001-one-flow.md). This file is the contract.
 >
-> **Pending:** OpenID Connect is drafted in
-> [interface-oidc.md](interface-oidc.md), waiting for epistemer's lock.
-> Until then this file is the whole contract.
+> **OpenID Connect** (§4.12, §5.14, §6.7, and the changes to §4.3, §4.5,
+> §4.9, §5.5.8, §5.5.9, §5.7.2, §7 and §9) was locked by epistemer on
+> 2026-11-17 as amendment A25, with decisions D37–D45 as recommended. The
+> reasons are in [ADR 0009](adr/0009-oidc.md).
 >
 > **Passkeys** (§4.11, §5.13, §6.6, and the changes to §4.2, §4.3, §4.9,
 > §5.1.3, §5.5, §7 and §9) were locked by epistemer on 2026-11-17 as
@@ -93,6 +94,15 @@ writes those over the API of §4. What `v0.1.0` leaves out is in §9.
 | D34 | Why a proof was refused | `auth.Refuse(reason string) error`, which a module's `Verify` returns; the engine records the reason and answers plain `ErrBadCredentials` | epistemer (A21) |
 | D35 | A test authenticator for apps | `passkey/passkeytest`: `New(tb, origin string) *Authenticator`, `Create(options json.RawMessage) []byte` and `Get(options json.RawMessage) []byte`. One authenticator holds one passkey; a test with two makes two | epistemer (A21) |
 | D36 | The clock a module reads | `MethodInput.Now time.Time`, the engine's clock (`WithClock`), so `authtest`'s clock moves passkeys too | epistemer (A21) |
+| D37 | A provider's method | One method a provider, named `oidc_<provider>` (`oidc_google`): `Offers` lists each, so the app draws a button per provider, and `Challenge` needs no new argument. Each method's identities are its own, also for two methods on one issuer | epistemer (A25) |
+| D38 | The constructor | `oidc.New(cfg oidc.Config) (auth.Method, error)`, as `passkey.New`; it reads the config once and makes no network call | epistemer (A25) |
+| D39 | Settings | `oidc.Config`, getters for one provider: `AuthOIDCProvider()`, `AuthOIDCIssuer()`, `AuthOIDCClientID()`, `AuthOIDCClientSecret() cfgx.Secret`, `AuthOIDCRedirectURL()`, `AuthOIDCScopes() []string`, `AuthOIDCTwoFactors() bool`. `authschema.OIDC()` declares them for the first provider; a second is a small adapter of the app's over its own keys | epistemer (A25) |
+| D40 | `Challenge.Options` | The authorization URL, a `string`: the app redirects to it, or hands it to a native client | epistemer (A25) |
+| D41 | The proof | `oidc.Callback(provider string, query url.Values) auth.Proof`: the provider names the method (`oidc_<provider>`), and the whole query lets the module read `code`, `state`, `iss` and `error` and refuse duplicates. Each provider has its own callback route | epistemer (A25) |
+| D42 | An identity linked to no one (sign-up) | `Prove` returns the flow with `Flow.Unlinked *Identity` set and no error; the app shows its sign-up step, creates the user, then calls `a.Link(ctx, token string, id UserID) (Flow, error)`, which links the identity the flow holds (never one the caller passes) and records the proof. Without a `Link`, nothing is stored. Only in a flow started by `SignInWithout` | epistemer (A25) |
+| D43 | Throttling by address | An optional interface in the core, `auth.AddressOnly` (`AddressOnly() bool`): a method whose proofs have nothing to guess implements it, and its attempts count toward the address alone (§5.13.11, A22). `auth/passkey` implements it too | epistemer (A25) |
+| D44 | Listing and unlinking identities | `a.Identities(ctx, id UserID) ([]IdentityInfo, error)` and `a.Unlink(ctx, s *Session, identityID string) error`, beside `Factors`: an identity is no factor, `ResetFactors` leaves identities, and `Unlink` refuses to remove a user's last way in | epistemer (A25) |
+| D45 | One mailbox, one factor | `MethodResult.Address string`: the address a proof shows control of (an identity's verified email). The engine treats the proof as one that came through that address, so with a code to the same mailbox it makes one factor, not two (§5.7.2) | epistemer (A25) |
 
 Claude's calls, D4, D10 and D22–D26, were accepted with the lock. For D23,
 the alternative is Ed25519 with a key file, which an amendment can add if
@@ -103,6 +113,12 @@ passkeys are in ADR 0008: the library (go-webauthn), conveyance `none`,
 UV required, every proof `Verified`, counters as WebAuthn §7.2 says, the
 handle is the `UserID`, three algorithms, at most 20 passkeys a user, and
 throttling by address (or a registered device's pair).
+
+D37–D45 were locked with A25, each as recommended. Claude's calls for OIDC
+are in ADR 0009: go-oidc and x/oauth2, PKCE S256 with `state` and
+`nonce`, discovery on first use in `Start` or `Verify`, ten-minute
+options, no `amr`, provider tokens discarded, an identity is issuer and
+subject, `Link` only for a user new to auth.
 
 ## 4. API
 
@@ -367,6 +383,19 @@ unchanged. `Enroll` takes a module's method. Adds `FactorLabel` (D33) and
 What `Challenge` returns for a passkey: `Method` is `"passkey"`, `SentTo`
 and `Resend` are empty, and `Options` is the `json.RawMessage` of D30.
 
+Added by A25:
+
+```go
+// Flow gains (D42):
+//	Unlinked *Identity // a proved identity no user holds; Link it, or start again
+
+// Link links the identity the flow proved, and holds, to id, a user the
+// app has just created for it, and records the proof (D42, §5.14.7).
+func (a *Auth) Link(ctx context.Context, token string, id UserID) (Flow, error)
+```
+
+`Prove` sets `Unlinked` for a flow started by `SignInWithout` whose proof names an identity no user holds (§5.14.7); `Link` then links it.
+
 ### 4.4 Sessions and requests
 
 ```go
@@ -449,6 +478,28 @@ func (a *Auth) Rekey(ctx context.Context) error                   // re-encrypts
 ```
 
 `FactorInfo` has an ID, the method, a label and two times (added, used).
+
+Added by A25:
+
+```go
+// Identities lists a user's linked identities (D44).
+func (a *Auth) Identities(ctx context.Context, id UserID) ([]IdentityInfo, error)
+
+// IdentityInfo is a linked identity as a user's list shows it.
+type IdentityInfo struct {
+	ID       string // to pass to Unlink
+	Method   string // oidc_google
+	Label    string // the provider's email when it gave one, else the provider
+	Added    time.Time
+	Used     time.Time
+}
+
+// Unlink removes one of the session's user's identities, under §5.1.9; it
+// refuses the user's last way in (§5.14.11).
+func (a *Auth) Unlink(ctx context.Context, s *Session, identityID string) error
+```
+
+`DeleteUser` removes a user's identities; `ResetFactors` leaves them: an identity is no factor.
 
 ### 4.6 Errors
 
@@ -594,6 +645,7 @@ type MethodResult struct {
 	Credential *Credential // to store, or to update
 	Verified   bool        // the proof counts as two factors
 	Unlinked   *Identity   // a valid identity that belongs to no user
+	Address    string      // an address the proof shows control of (A25)
 }
 
 type Identity struct {
@@ -628,6 +680,21 @@ Added by A21 (`Refuse` is declared in §4.3):
   included), or a new `Challenge` replaces it. It is at
   most 4 KiB.
 - `MethodInput.Now` is the engine's clock (D36).
+
+```go
+// AddressOnly is an optional interface of a Method whose proofs have
+// nothing to guess (D43).
+type AddressOnly interface{ AddressOnly() bool }
+```
+
+Added by A25: `AddressOnly` (D43) and `MethodResult.Address` (D45).
+`MethodResult.Unlinked` is set by a method whose proof is valid but whose
+identity `Find` didn't find; then `User` is empty and `Credential` is the
+credential to store if the identity is linked. **§5.5.8** is amended to
+match: outside an `Enroll`, an `Unlinked` result's `Credential` is a new
+one, kept in the flow (sealed, as an enrollment's) until `Link` stores it,
+checking rule 10 there. In an `Enroll` the method leaves `User` empty, so
+an identity someone holds is rule 10's `duplicate` for everyone.
 
 ### 4.10 `auth/authtest`
 
@@ -701,6 +768,51 @@ func New(tb testing.TB, origin string) *Authenticator
 func (a *Authenticator) Create(options json.RawMessage) []byte
 func (a *Authenticator) Get(options json.RawMessage) []byte
 ```
+
+### 4.12 `auth/oidc` (A25)
+
+A nested module, `github.com/epistemer/auth/oidc`.
+
+```go
+// Config is one provider's settings (D39), read once by New. An app's
+// generated settings implement it when its schema holds
+// authschema.Group(authschema.OIDC()).
+type Config interface {
+	AuthOIDCProvider() string          // [a-z0-9_]{1,27}; the method is oidc_<provider>
+	AuthOIDCIssuer() string            // https://accounts.google.com
+	AuthOIDCClientID() string
+	AuthOIDCClientSecret() cfgx.Secret // empty for a public client, which PKCE alone protects
+	AuthOIDCRedirectURL() string       // this provider's callback route
+	AuthOIDCScopes() []string          // beyond openid; email and profile when empty
+	AuthOIDCTwoFactors() bool          // the provider's sign-in counts as two factors (§5.14.9)
+}
+
+// New returns the provider's method, to pass to auth.WithMethods (D38). It
+// refuses a nil config; a provider name outside [a-z0-9_]{1,27}; an issuer
+// that isn't an absolute https URL of at most 767 bytes, with no user, query
+// or fragment (http://localhost for development); a redirect URL that isn't
+// https (or http://localhost), with no user or fragment; an empty client ID;
+// and a scope that holds a space or a control character.
+func New(cfg Config) (auth.Method, error)
+
+// Callback is the proof a provider's redirect carries: the provider's name
+// and the callback request's query, whole (D41). It prints as its method.
+func Callback(provider string, query url.Values) auth.Proof
+```
+
+The core's additions are in §4.3, §4.5 and §4.9.
+
+In `auth/authschema` (D39):
+
+```go
+// OIDC returns the group oidc: provider, issuer, client_id, client_secret,
+// redirect_url, scopes, two_factors.
+func OIDC() *dsl.GroupDef
+```
+
+What `Challenge` returns for a provider: `Method` is `oidc_<provider>`,
+`SentTo` and `Resend` are empty, and `Options` is the authorization URL,
+a `string` (D40).
 
 ## 5. Rules
 
@@ -809,10 +921,9 @@ func (a *Authenticator) Get(options json.RawMessage) []byte
    an email address.
 3. A proof that names a user other than the flow's is refused.
 4. A credential whose key already belongs to another user is not stored.
-5. Each module has a section of its own: passkeys §5.13 (A21); OIDC's is
-   added by amendment when its milestone starts. How an app learns of an
-   `Unlinked` identity is part of the OIDC one; a new field on `Flow` is a
-   compatible change.
+5. Each module has a section of its own: passkeys §5.13 (A21), OpenID
+   Connect §5.14 (A25). An app learns of an `Unlinked` identity through
+   `Flow.Unlinked` and links it with `Link` (§5.14.7).
 
 Rules 6–11 were added by A21. They hold for every module method; §5.13 and
 the OIDC section add their own.
@@ -850,9 +961,16 @@ the OIDC section add their own.
    transaction of rule 6; else the proof is refused (reason `changed`).
    Other credentials the user holds aren't checked: removing one in
    another tab doesn't refuse a proof by another.
-9. **Throttling.** A module's attempts count toward the address's counter
-   and the pair's and user's counters of a kind of the method's own
-   (A20), unless its section says otherwise (§5.13.11 does). §5.8.6 holds
+   (A25) outside an `Enroll`, an `Unlinked` result's `Credential` is a
+   new one, kept in the flow (sealed, as an enrollment's) until `Link`
+   stores it, checking rule 10 there. In an `Enroll` the method leaves
+   `User` empty, so an identity someone holds is rule 10's `duplicate`
+   for everyone.
+9. **Throttling.** A method that implements `AddressOnly` and answers true
+   counts its attempts toward the address's counter alone, or a trusted
+   device's pair counter (§5.8.6) (A25); others count toward the address's
+   counter and the pair's and user's counters of a kind of the method's own
+   (A20). §5.8.6 holds
    as for any proof. A flow takes at most ten `Challenge`s and five
    refused proofs per module method; past either, the method is
    `ErrMethodUnavailable` in that flow.
@@ -916,7 +1034,9 @@ the OIDC section add their own.
    sent to an address instead, when the `Directory` returns one. Once a
    factor is enrolled, a code sent to an address is no longer a second proof
    for that user: a mailbox must not be a way around an authenticator. Two
-   proofs that reach the user through one address count as one.
+   proofs that reach the user through one address count as one; a proof
+   with an `Address` (an identity's verified email) counts as one that came
+   through that address (A25).
 3. `Ready` is true when the session would be verified, or when the policy
    has `AllowUnverified` and the first method is proven.
 4. When the policy needs verification and the user has no second method,
@@ -1091,6 +1211,87 @@ the OIDC section add their own.
     refusal or a failure of its own. No event holds the
     response, the challenge, a credential ID or a key.
 
+### 5.14 OpenID Connect (A25)
+
+1. **Flow.** The authorization code flow with PKCE. `Challenge` makes
+   `state`, `nonce` and the code verifier, 32 random bytes each, base64url
+   without padding (43 characters), keeps them with an expiry of ten
+   minutes (by `MethodInput.Now`) in the method's state, and returns the
+   authorization URL with `response_type=code`, the client ID, the
+   redirect URL, the scopes (`openid` always), `state`, `nonce`, the code
+   challenge and `code_challenge_method=S256`; with `two_factors`, also
+   `max_age=300` (§5.14.9).
+2. **Discovery** runs when `Start` or `Verify` first needs it, once at a
+   time (concurrent callers wait for one fetch), and only a success is
+   cached. The document's `issuer` must equal the configured one, and its
+   authorization, token and key-set endpoints must be absolute https URLs
+   with no user (http on localhost when the issuer is). Discovery, key-set
+   fetches and the exchange share one HTTP client: a 10-second timeout, no
+   redirects, responses cut at 1 MiB. A failure to reach the provider, an
+   HTTP 5xx or 429, and a refused client (`invalid_client`) are the
+   method's own failures, which take back the attempt's count (§5.5.6).
+3. **The callback**, checked in this order: over 8 KiB of query (keys and
+   values counted) is `malformed`; so is a parameter given twice, and
+   both or neither of `code` and `error`; options past ten minutes are
+   `expired`; `state` must equal the flow's, compared in constant time
+   (`state`); an `iss` parameter must equal the issuer, and is required
+   when discovery says the provider sends one (RFC 9207) (`issuer`); then
+   an `error` parameter is refused (`provider_error`), its text in no
+   error, event or log.
+4. **The exchange.** The code is exchanged with the verifier, and the
+   client secret when set (in the request body for a public client). A
+   refusal of the grant (HTTP 400) is reason `exchange`.
+5. **The ID token** is checked by go-oidc against the clock of
+   `MethodInput.Now`: signature by the provider's keys (RS256 with keys of
+   2048 to 4096 bits, or ES256), `iss`, `aud` containing the client ID,
+   `exp`. Then: `nonce` equals the flow's (`nonce`); `azp`, whenever
+   present, equals the client ID, and is required when `aud` has several
+   values (`audience`); `iat` is present and not more than a minute ahead;
+   with `two_factors`, `auth_time` is present and within the last five
+   minutes (`token`); `sub` is 1 to 255 bytes with no control character
+   (`malformed`). Any other failure is reason `token`.
+6. **The identity** is the issuer and the subject; the credential's key is
+   `issuer \0 subject` (at most 1023 bytes, as §4.11's 767-byte issuer
+   ensures). It is found through `Find`, never by email or any other claim
+   (§5.5.2). Found, it names its user (rules 3 and 7 of §5.5).
+7. **Unlinked.** Not found, in a flow started by `SignInWithout`, the
+   method returns `Unlinked`; `Prove` keeps the identity and its
+   credential in the flow and returns the flow with `Unlinked` set,
+   `Ready` false and no offers. In any other flow it is refused
+   (`unlinked`). `Link` stores the identity for the user named, and
+   records the proof, in one transaction, if the user is one the
+   `Directory` knows who is new to auth: no password, no credential, no
+   recovery codes, no device, no session (ended ones included), no
+   invitation or recovery under way; else `ErrBadCredentials` (reason
+   `not_new`) and nothing is stored. An identity linked meanwhile is
+   `duplicate`. The rule stops an app's sign-up from linking an identity
+   to an account it found by email; it can't stop one that names an
+   account it pre-provisioned, so `Link` must name a user created for
+   this identity, in this request.
+8. **Data.** `Credential.Data` is the module's protobuf record, with a
+   version: the issuer, the subject, the email and whether it was
+   verified, as last seen; rewritten only when they change. The label is
+   the email when given, else the provider, cleaned as any label (A22),
+   and kept once set. Nothing in it is a secret. Provider tokens are
+   discarded. The proof prints as its method.
+9. **Factors.** A provider's proof is `Verified` when `two_factors` is
+   set, else one factor; `amr` is not read. With `two_factors` the
+   request asks for a sign-in no older than five minutes and the token
+   must show one (rule 5), so a stale session at the provider can't meet
+   `Within`. An identity is no second factor (§5.7.2): it is offered only
+   as a first proof, never in a step-up, a recovery or an invitation.
+   Its `Address` is its email when `email_verified` is true (D45).
+10. **Throttling.** The method implements `AddressOnly` (§5.5.9). The
+    address counter is the one passwords share: callers behind one
+    address share its waits, as for passwords (A20).
+11. **Unlink** refuses a user's last way in: no password, no passkey and
+    no other identity left (`ErrMethodUnavailable`).
+12. **Refusals** give `Refuse` one of: `provider_error`, `state`,
+    `issuer`, `expired`, `exchange`, `nonce`, `audience`, `token`,
+    `unlinked`, `malformed`. The engine adds `not_new` and §5.5's. No
+    provider or library text, code, token or claim reaches an error, an
+    event or a log.
+
 ## 6. Examples
 
 ### 6.1 Wiring
@@ -1197,6 +1398,43 @@ flow, err = a.Enroll(ctx, sess, auth.MethodPasskey)
 ch, err = a.Challenge(ctx, flow.Token, auth.MethodPasskey) // navigator.credentials.create
 flow, err = a.Prove(ctx, flow.Token, passkey.Response(body))
 res, err = a.Finish(ctx, flow.Token, auth.FactorLabel("Sara's phone"))
+```
+
+### 6.7 OpenID Connect (A25)
+
+```go
+// schema
+var Auth = authschema.Group(authschema.OIDC())
+
+// main
+google, err := oidc.New(cfg)
+a, err := auth.New(db, cfg, dir, mailer,
+	auth.WithMethods(google),
+	auth.WithFirst(auth.MethodPassword, "oidc_google"),
+)
+
+// GET /sign-in/google
+flow, err := a.SignInWithout(ctx, auth.Cookie())
+if err != nil { fail(w, r, err); return }
+ch, err := a.Challenge(ctx, flow.Token, "oidc_google")
+if err != nil { fail(w, r, err); return }
+flow.Write(w)
+http.Redirect(w, r, ch.Options.(string), http.StatusFound)
+
+// GET /sign-in/google/callback
+token, _ := auth.FlowToken(ctx)
+flow, err = a.Prove(ctx, token, oidc.Callback("google", r.URL.Query()))
+if err != nil { fail(w, r, err); return }
+if flow.Unlinked != nil {
+	// The app's sign-up step: terms, a name. Use the email only if
+	// flow.Unlinked.EmailVerified, and only as the new user's address.
+	id, err := users.Create(ctx, flow.Unlinked)
+	if err == nil {
+		flow, err = a.Link(ctx, token, id)
+	}
+	if err != nil { fail(w, r, err); return }
+}
+res, err := a.Finish(ctx, flow.Token) // unverified unless two_factors
 ```
 
 ## 7. Acceptance tests
@@ -1395,6 +1633,43 @@ milestone that makes it possible.
 - No event, log line or error holds the response, the challenge, a
   credential ID, a public key or the library's error text.
 
+**OpenID Connect (A25)**
+Against a provider of the tests' own (an `httptest` server with discovery,
+keys and a token endpoint), in `oidc`'s tests:
+
+- A sign-in by a linked identity finishes for its user; another issuer's
+  identity with the same subject doesn't; a callback for one provider
+  proved as another's is refused.
+- An identity is never found by email.
+- Each refusal of §5.14 is met with its reason, in §5.14.3's order: a
+  query over 8 KiB, a parameter twice, `code` and `error` together,
+  expired options, another `state`, another or a missing required `iss`,
+  a provider error, a refused exchange, another `nonce`, another `azp`, a
+  future `iat`, a stale `auth_time` with `two_factors`, a bad signature,
+  an RSA key of 1024 bits, a subject of 256 bytes or with a control
+  character.
+- Discovery that names another issuer, or an endpoint over http or with a
+  user, is refused; a provider down, a 503 and `invalid_client` are the
+  method's own failures and take back the count; a failed discovery isn't
+  cached; a redirect isn't followed.
+- A callback is accepted once; after a second `Challenge` the first's is
+  refused.
+- An unlinked identity: `Prove` sets `Unlinked`; `Link` to a new user
+  signs in and links; to a user with a password, a passkey, recovery
+  codes, a device, an ended session or an invitation under way it is
+  `not_new` and stores nothing; an identity linked meanwhile is
+  `duplicate`; in a step-up or a sign-in with a login it is refused.
+- Enrolling an identity someone holds is `duplicate`, the same user too.
+- `two_factors` makes the proof verified; without it a staff policy needs
+  a second proof, and an identity is no second factor; with a verified
+  email equal to the user's, a code sent there doesn't make it two.
+- `Identities` lists an identity, `Unlink` removes it, and refuses the last
+  way in; `ResetFactors` leaves identities; `DeleteUser` removes them.
+- Failed callbacks count toward the address alone; the caps of §5.5.9
+  hold.
+- No event, error or log holds a code, a token, `state`, `nonce` or the
+  provider's error text.
+
 ## 8. Storage
 
 - One top-level bucket, `auth`, in the bbolt file the app passes, and
@@ -1414,7 +1689,10 @@ milestone that makes it possible.
 
 ## 9. Out of v0.1
 
-- OIDC (the module after `v0.2.0`); SAML (not planned).
+- SAML (not planned).
+- For OpenID Connect (A25): front-channel and back-channel logout, refresh
+  tokens and calling the provider's APIs, the `amr` claim, dynamic client
+  registration, and linking by email in any form.
 - For passkeys (A21): attestation trust and metadata, AAGUID names, the
   signal API, related origins, conditional creation, extensions such as
   PRF, passkey-only accounts and security keys without UV.
@@ -1454,3 +1732,4 @@ Changes Claude made under the ownership terms, or on epistemer's choice where th
 | A22 | 2026-11-17 | §5.5.6, §5.5.9, §5.7.2, §4.3, §4.9 | How the engine drives modules where A21 was silent (M7.1, [review 0021](reviews/0021-m7.1-engine.md)). A proof that loses the race for its method's state has its count taken back: its `Verify`'s answer is thrown away, so nothing was judged, and each state is still judged once. A `SignInWithout` has no user's counter until a proof names the user: a module's attempt on it counts toward the address's counter, or, with a registered device its owner's policy trusts, that owner's pair counter of the method's kind; a success clears counters only of the user the proof named. So a method served through `SignInWithout` must have nothing to guess: a signature over the server's challenge, or an external assertion, as passkeys and OIDC. A factor whose module isn't given to `WithMethods` is offered nowhere, and still keeps a code to an address from counting as a second method. A proof that names a user the `Directory` doesn't know, or names no one when the method was told no user, is refused (`user_mismatch`). A method stays offered past its ten `Challenge`s while its last state is unused. In an `Enroll`, a `MethodResult` with no credential, or a key over 1023 bytes, is the method's own failure. `Finish` refuses a credential past the method's limit with the reason `limit`. A label, `FactorLabel`'s or the method's own, is cleaned and cut at 64 runes; one empty once cleaned gives the method's own. Two proofs of one module method in a flow are one factor, verified if either was |
 | A23 | 2026-11-17 | §5.13.2–4, §5.13.8 | How the passkey module behaves where §5.13 was silent (M7.2, [review 0022](reviews/0022-m7.2-passkey.md)). A registration's public key must parse and be usable: of the kind its algorithm names, on its curve, and for RS256 at least 2048 bits with an odd exponent from 3 to 2³¹−1; one that isn't, or names no algorithm, is `malformed`. The credential ID the client reports must equal the one the attestation holds (`malformed`). Options for a known user name that user, also when they hold no passkey, so another user's passkey is refused (`unknown_credential`). A user handle is 1 to 64 bytes. An origin matches one configured exactly, with no folding of case or default ports. A domain whose last label reads as a number, in any base, is refused. A state or a credential record of another version is the module's own failure |
 | A24 | 2026-11-17 | §5.5.9, §5.13.2, A23 | From the security review of v0.2.0 ([review 0023](reviews/0023-m7.4-security.md)). A `Challenge` past its method's caps is refused before the method is asked. One whose flow gained a proof or a user while the method's `Start` ran is `ErrMethodUnavailable` and stores nothing, since the method was told less than it should have been. An RS256 key is at most 4096 bits |
+| A25 | 2026-11-17 | §3, §4.3, §4.5, §4.9, §4.12, §5.5.5, §5.5.8, §5.5.9, §5.7.2, §5.14, §6.7, §7, §9 | On epistemer's lock: OpenID Connect, as drafted in M8.0 ([ADR 0009](adr/0009-oidc.md), [review 0024](reviews/0024-oidc-draft.md)), with D37–D45 as recommended. The nested module `auth/oidc` (§4.12, §5.14); in the core `Flow.Unlinked` and `Link`, `Identities`, `IdentityInfo` and `Unlink`, `AddressOnly` and `MethodResult.Address`; in `authschema` `OIDC()`. An unlinked identity's credential is kept in the flow until `Link` (§5.5.8); a method that implements `AddressOnly` counts by address alone, and the core's list naming passkeys goes (§5.5.9); a proof with an `Address` counts as one through that address (§5.7.2). Implemented by M8.1–M8.3 |

@@ -3,6 +3,27 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: the OIDC module (M8.2)
+
+- **Landed:** `auth/oidc`, a nested module on go-oidc v3.21.0 (its
+  verifier, with a key set of our own) and x/oauth2 v0.38.0: `New` with
+  §4.12's checks, its own discovery (issuer and https endpoints checked),
+  one HTTP client with a timeout, no redirects and a 1 MiB cap, PKCE,
+  `state` and `nonce`, the callback checks in §5.14.3's order, the ID
+  token's, identities keyed by issuer and subject. CI runs the module.
+  The core's module graph holds no OIDC module.
+- **Tests:** against a provider of the tests' own (discovery, keys, a
+  token endpoint checking PKCE and the client); 58 mutations, every one
+  caught once redundant checks were removed; under `-race` too.
+- **Review:** [review 0026](reviews/0026-m8.2-oidc.md), Gemini 4
+  Hydrogen (XHigh), about 281k tokens. The serious one: go-oidc hides a
+  key-set outage's error, so an outage was answered as a bad token; it is
+  now caught per call. Also fixed: locks across the network, key rotation
+  under one `kid`, a future `auth_time`, and gaps in the tests.
+- **Decided for you:** amendment A27, where §5.14 was silent.
+- **Next:** M8.3, `authschema.OIDC()` and the shop.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: identities in the core (M8.1)
 
 - **Landed:** an identity a module proves that no user holds waits in a

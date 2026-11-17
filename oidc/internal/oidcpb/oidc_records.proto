@@ -1,0 +1,27 @@
+// Records auth/oidc keeps: an identity's data (auth.Credential.Data) and a
+// request's state in a flow (interface §5.14.1, §5.14.8).
+
+syntax = "proto3";
+
+package auth.oidc.v1;
+
+option go_package = "github.com/epistemer/auth/oidc/internal/oidcpb";
+
+// Identity is a linked identity's record. Nothing in it is a secret.
+message Identity {
+  uint32 version = 1;
+  string issuer = 2;
+  string subject = 3;
+  string email = 4;
+  bool email_verified = 5;
+}
+
+// State is what a flow keeps between Challenge and the callback. The
+// verifier is the PKCE secret, kept in the flow on the server only.
+message State {
+  uint32 version = 1;
+  string state = 2;
+  string nonce = 3;
+  string verifier = 4;
+  int64 expires = 5; // Unix nanoseconds
+}

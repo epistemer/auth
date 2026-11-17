@@ -53,15 +53,15 @@ jobs:
       - name: Run staticcheck
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.27.x'
         run: |
-          for m in . authschema passkey examples/shop; do
+          for m in . authschema passkey oidc examples/shop; do
             (cd "$m" && go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...)
           done
 
-      # ADR 0004: authschema and passkey are modules of their own.
+      # ADR 0004: authschema, passkey and oidc are modules of their own.
       - name: Check every go.mod is tidy
         if: matrix.os == 'ubuntu-latest' && matrix.go == '1.26.x'
         run: |
-          for m in . authschema passkey examples/shop; do
+          for m in . authschema passkey oidc examples/shop; do
             (cd "$m" && go mod tidy -diff)
           done
 
@@ -75,6 +75,7 @@ jobs:
           protoc --version
           go generate ./...
           (cd passkey && go generate ./...)
+          (cd oidc && go generate ./...)
           git diff --exit-code -I '^//[[:space:]]+protoc[[:space:]]'
           untracked=$(git ls-files --others --exclude-standard)
           if [ -n "$untracked" ]; then
@@ -90,7 +91,7 @@ jobs:
       # generated settings, and the check that they satisfy auth.Config.
       - name: Test nested modules
         run: |
-          for m in authschema passkey examples/shop; do
+          for m in authschema passkey oidc examples/shop; do
             echo "== $m"
             (cd "$m" && go vet ./... && go test -race ./...)
           done

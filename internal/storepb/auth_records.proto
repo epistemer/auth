@@ -28,6 +28,9 @@ message Factor {
   bytes channel = 3;
   // A module's proof that counts as two factors on its own (§5.5.1).
   bool verified = 4;
+  // The credential a module's proof used, as the SHA-256 of its key, so a
+  // flow can't finish on a credential removed since (review 0027).
+  bytes credential = 5;
 }
 
 // Client is the client as seen when a record was made.

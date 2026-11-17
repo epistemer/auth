@@ -60,6 +60,23 @@ func (a *Auth) Link(ctx context.Context, token string, id UserID) (Flow, error) 
 		refused("disabled")
 		return Flow{}, ErrUserDisabled
 	}
+	// A user who couldn't finish (a policy needing two factors, a proof of
+	// one, and no address that would count) gets nothing stored
+	// (review 0027).
+	if pol := a.policy(ctx, u); !pol.AllowUnverified && rec.PendingProof != nil && !rec.PendingProof.Verified {
+		seconds, err := a.addresses(ctx, u)
+		if err != nil {
+			return Flow{}, err
+		}
+		seconds, err = a.notSameMailbox(ctx, u, []*storepb.Factor{rec.PendingProof}, seconds)
+		if err != nil {
+			return Flow{}, err
+		}
+		if len(seconds) == 0 {
+			refused("cannot_verify")
+			return Flow{}, ErrCannotVerify
+		}
+	}
 	var reason string
 	got := new(storepb.Flow)
 	err = a.db.Update(func(tx *bolt.Tx) error {
@@ -86,6 +103,7 @@ func (a *Auth) Link(ctx context.Context, token string, id UserID) (Flow, error) 
 			// Linked to someone meanwhile: the flow starts again.
 			reason = "duplicate"
 			cur.Pending, cur.UnlinkedMethod, cur.Unlinked, cur.PendingProof = nil, "", nil, nil
+			cur.MethodState = nil
 			return store.Put(tx, store.Flows, hash, cur)
 		}
 		fresh, err := a.newToAuthTx(tx, id)
@@ -106,8 +124,8 @@ func (a *Auth) Link(ctx context.Context, token string, id UserID) (Flow, error) 
 		if err := store.B(tx, store.CredentialKeys).Put(credentialIndex(method, c.Key), []byte(id)); err != nil {
 			return err
 		}
+		// Dated when it was proved, not when it was linked (review 0027).
 		f := cur.PendingProof
-		f.At = now
 		cur.UserId = string(id)
 		cur.Proofs = append(cur.Proofs, f)
 		cur.Pending, cur.UnlinkedMethod, cur.Unlinked, cur.PendingProof = nil, "", nil, nil
@@ -236,7 +254,7 @@ func (a *Auth) Unlink(ctx context.Context, s *Session, identityID string) error 
 	}
 	method, sum, ok := strings.Cut(identityID, ":")
 	raw, herr := hex.DecodeString(sum)
-	if !ok || herr != nil || len(raw) != 32 || !isIdentity(method) {
+	if !ok || herr != nil || len(raw) != 32 || !methodNameRE.MatchString(method) || !isIdentity(method) {
 		return ErrMethodUnavailable
 	}
 	sess, u, err := a.liveSession(ctx, s)

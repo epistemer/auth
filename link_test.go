@@ -344,6 +344,14 @@ func TestOneMailboxOneFactor(t *testing.T) {
 		if err != nil && !errors.Is(err, ErrCannotVerify) {
 			t.Fatal(err)
 		}
+		if !tc.verified {
+			// One mailbox: its code isn't offered as a second proof, and
+			// with nothing else to offer the user can't verify (review 0027).
+			if slices.Contains(f.Offers, MethodEmailCode) || !errors.Is(err, ErrCannotVerify) {
+				t.Errorf("%q: offers %v, %v", tc.email, f.Offers, err)
+			}
+			continue
+		}
 		if !slices.Contains(f.Offers, MethodEmailCode) {
 			t.Fatalf("%q: offers %v", tc.email, f.Offers)
 		}
@@ -446,15 +454,14 @@ func TestLinkEdges(t *testing.T) {
 	k.dir.mu.Lock()
 	k.dir.addrs["u9"][ChannelEmail] = "nine@toyshop.example"
 	k.dir.mu.Unlock()
+	// Its only address is the identity's mailbox: under a policy needing
+	// two factors Link refuses, storing nothing (review 0027).
 	f = k.unlinked(t, "oidc_test", "sub-9")
-	f, err := k.Link(k.ctx, f.Token, "u9")
-	if err != nil && !errors.Is(err, ErrCannotVerify) {
-		t.Fatal(err)
+	if _, err := k.Link(k.ctx, f.Token, "u9"); !errors.Is(err, ErrCannotVerify) {
+		t.Errorf("Link for a user who can't verify: %v", err)
 	}
-	k.clock.advance(time.Minute)
-	k.Challenge(k.ctx, f.Token, MethodEmailCode)
-	if f, _ = k.Prove(k.ctx, f.Token, EmailCode(k.lastCode(t, "nine@toyshop.example"))); f.Verified {
-		t.Error("a linked proof and a code to its mailbox made two factors")
+	if _, linked := k.findIdentity(t, "sub-9"); linked {
+		t.Error("stored though the user can't verify")
 	}
 
 	// The flow started again and proved another identity while Link read
@@ -578,5 +585,175 @@ func TestLinkRaces(t *testing.T) {
 	})
 	if _, err := k.Link(k.ctx, f.Token, "u9"); !errors.Is(err, ErrMethodUnavailable) {
 		t.Errorf("Link on a flow that knows someone: %v", err)
+	}
+}
+
+// Review 0027, finding 1: on a sign-in with no login, an attempt counted on
+// the prover's own device's pair clears nothing when it succeeds, so
+// failures between successes add up to a wait.
+func TestDeviceSuccessClearsNothing(t *testing.T) {
+	pk := &fakeMethod{name: MethodPasskey, verified: true, addrOnly: true}
+	k := newKit(t, WithMethods(pk), WithFirst(MethodPassword, MethodPasskey))
+	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword, saraMail)
+	res := twoFactorSignIn(t, k, nil, RememberDevice("laptop"))
+	k.addKey(t, "u1", MethodPasskey, "sara-1")
+	ctx := context.WithValue(WithClient(k.ctx, Client{Addr: netip.MustParseAddr("198.51.100.1")}), deviceTokenKey{}, res.device)
+	var err error
+	for round := 0; round < 10 && !errors.Is(err, ErrTooManyAttempts); round++ {
+		for range 4 {
+			f, _ := k.SignInWithout(ctx, Cookie())
+			if _, err = k.proveKey(t, ctx, f.Token, MethodPasskey, "unknown"); errors.Is(err, ErrTooManyAttempts) {
+				break
+			}
+		}
+		if errors.Is(err, ErrTooManyAttempts) {
+			break
+		}
+		f, _ := k.SignInWithout(ctx, Cookie())
+		if _, err = k.proveKey(t, ctx, f.Token, MethodPasskey, "sara-1"); err != nil && !errors.Is(err, ErrTooManyAttempts) {
+			t.Fatal(err)
+		}
+	}
+	if !errors.Is(err, ErrTooManyAttempts) {
+		t.Error("successes between failures kept the pair from ever waiting")
+	}
+}
+
+// Review 0027, finding 2: an identity's proof of one factor meets no
+// Within and is no fresh proof for §5.1.9; one of two factors is. Link
+// dates the proof when it was proved.
+func TestIdentityFreshness(t *testing.T) {
+	for _, two := range []bool{false, true} {
+		k := newIdPKit(t, &fakeIdP{twoFactors: two}, WithPolicy(allowUnverified))
+		f := k.unlinked(t, "oidc_test", "sub-f")
+		proved := k.clock.now()
+		k.clock.advance(time.Minute)
+		f, err := k.Link(k.ctx, f.Token, "u9")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := k.Finish(k.ctx, f.Token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.Session.Factors[0].At.Equal(proved) {
+			t.Errorf("two=%v: dated %v, proved %v", two, res.Session.Factors[0].At, proved)
+		}
+		err = k.Check(withSession(k.ctx, res.Session), Unverified, Within(5*time.Minute))
+		if two && err != nil || !two && !errors.Is(err, ErrStale) {
+			t.Errorf("two=%v: Within: %v", two, err)
+		}
+	}
+	// A session verified by an identity and a trusted device can't change
+	// factors: neither is a fresh proof.
+	k := newIdPKit(t, &fakeIdP{})
+	k.addKey(t, "u1", "oidc_test", idpIssuer+"\x00sara")
+	dev := twoFactorSignIn(t, k, nil, RememberDevice("laptop"))
+	ctx := context.WithValue(k.ctx, deviceTokenKey{}, dev.device)
+	k.clock.advance(time.Minute)
+	f, _ := k.SignInWithout(ctx, Cookie())
+	f, err := k.proveIdP(t, ctx, f.Token, "oidc_test", "sara")
+	if err != nil || !f.Verified {
+		t.Fatalf("identity and device: %+v %v", f, err)
+	}
+	res, _ := k.Finish(ctx, f.Token)
+	if _, err := k.Enroll(withSession(k.ctx, res.Session), res.Session, MethodTOTP); !errors.Is(err, ErrStale) {
+		t.Errorf("Enroll from an identity and a device: %v", err)
+	}
+}
+
+// Review 0027, finding 3: a flow can't finish on a credential removed
+// since its proof: a passkey, an authenticator app, an identity.
+func TestFinishNeedsTheCredential(t *testing.T) {
+	k, _ := newPasskeyKit(t)
+	k.addKey(t, "u1", MethodPasskey, "sara-1")
+	f, _ := k.SignInWithout(k.ctx, Cookie())
+	f, err := k.proveKey(t, k.ctx, f.Token, MethodPasskey, "sara-1")
+	if err != nil || !f.Ready {
+		t.Fatal(err)
+	}
+	k.db.Update(func(tx *bolt.Tx) error {
+		return k.deleteCredential(tx, "u1", MethodPasskey, credentialKey("u1", MethodPasskey, []byte("sara-1")))
+	})
+	if _, err := k.Finish(k.ctx, f.Token); !errors.Is(err, ErrNotReady) {
+		t.Errorf("a removed passkey: %v", err)
+	}
+
+	k2 := newIdPKit(t, &fakeIdP{twoFactors: true})
+	k2.addKey(t, "u1", "oidc_test", idpIssuer+"\x00sara")
+	g, _ := k2.SignInWithout(k2.ctx, Cookie())
+	g, err = k2.proveIdP(t, k2.ctx, g.Token, "oidc_test", "sara")
+	if err != nil || !g.Ready {
+		t.Fatal(err)
+	}
+	k2.db.Update(func(tx *bolt.Tx) error {
+		return k2.deleteCredential(tx, "u1", "oidc_test", credentialKey("u1", "oidc_test", []byte(idpIssuer+"\x00sara")))
+	})
+	if _, err := k2.Finish(k2.ctx, g.Token); !errors.Is(err, ErrNotReady) {
+		t.Errorf("an unlinked identity: %v", err)
+	}
+
+	// Linked, then unlinked before Finish.
+	g = k2.unlinked(t, "oidc_test", "sub-l")
+	if g, err = k2.Link(k2.ctx, g.Token, "u9"); err != nil {
+		t.Fatal(err)
+	}
+	k2.db.Update(func(tx *bolt.Tx) error {
+		return k2.deleteCredential(tx, "u9", "oidc_test", credentialKey("u9", "oidc_test", []byte(idpIssuer+"\x00sub-l")))
+	})
+	if _, err := k2.Finish(k2.ctx, g.Token); !errors.Is(err, ErrNotReady) {
+		t.Errorf("an identity unlinked after Link: %v", err)
+	}
+
+	k3 := newDeviceKit(t)
+	secret := enrollApp(t, k3)
+	h := passwordOnly(t, k3, "sara")
+	k3.clock.advance(time.Minute)
+	if h, err = k3.Prove(k3.ctx, h.Token, TOTP(k3.code(secret, 0))); err != nil || !h.Ready {
+		t.Fatalf("totp: %+v %v", h, err)
+	}
+	k3.db.Update(func(tx *bolt.Tx) error { return k3.deleteMethod(tx, "u1", MethodTOTP) })
+	if _, err := k3.Finish(k3.ctx, h.Token); !errors.Is(err, ErrNotReady) {
+		t.Errorf("a removed authenticator app: %v", err)
+	}
+}
+
+// Review 0027, findings 4, 9 and 12: Unlink refuses a method name with a
+// zero byte rather than panicking; Rekey skips a module's pending
+// credential; a Challenge racing a proof that left an identity unlinked is
+// refused.
+func TestReview0027Edges(t *testing.T) {
+	k := newIdPKit(t, &fakeIdP{})
+	k.clock.advance(time.Minute)
+	res := twoFactorSignIn(t, k, nil)
+	if err := k.Unlink(withSession(k.ctx, res.Session), res.Session, "oidc_x\x00:"+strings.Repeat("00", 32)); !errors.Is(err, ErrMethodUnavailable) {
+		t.Errorf("a zero byte: %v", err)
+	}
+
+	kp, _ := newPasskeyKit(t)
+	kp.clock.advance(time.Minute)
+	r := twoFactorSignIn(t, kp, nil)
+	ctx := withSession(kp.ctx, r.Session)
+	f, _ := kp.Enroll(ctx, r.Session, MethodPasskey)
+	if f, err := kp.proveKey(t, ctx, f.Token, MethodPasskey, "pending"); err != nil || !f.Ready {
+		t.Fatal(err)
+	}
+	if err := kp.Rekey(kp.ctx); err != nil {
+		t.Errorf("Rekey with a passkey enrollment under way: %v", err)
+	}
+
+	idp := &fakeIdP{name: "oidc_test"}
+	pk := &fakeMethod{name: MethodPasskey, verified: true, addrOnly: true}
+	k = newKit(t, WithMethods(idp, pk), WithFirst(MethodPassword, MethodPasskey, "oidc_test"))
+	g, _ := k.SignInWithout(k.ctx, Cookie())
+	ich := k.challenge(t, k.ctx, g.Token, "oidc_test")
+	pk.onStart = func() {
+		pk.onStart = nil
+		if h, err := k.Prove(k.ctx, g.Token, idpProof{method: "oidc_test", challenge: ich, subject: "sub-c"}); err != nil || h.Unlinked == nil {
+			t.Errorf("the identity: %+v %v", h, err)
+		}
+	}
+	if _, err := k.Challenge(k.ctx, g.Token, MethodPasskey); !errors.Is(err, ErrMethodUnavailable) {
+		t.Errorf("a Challenge racing an unlinked proof: %v", err)
 	}
 }

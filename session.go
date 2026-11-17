@@ -50,6 +50,8 @@ func (s *Session) superseded(rec *storepb.Session) bool {
 type Factor struct {
 	Method string
 	At     time.Time
+
+	verified bool // a module's proof that counts as two factors
 }
 
 type sessionKey struct{}
@@ -164,7 +166,7 @@ func toSession(s *storepb.Session) *Session {
 		gen: s.Generation,
 	}
 	for _, f := range s.Factors {
-		out.Factors = append(out.Factors, Factor{Method: f.Method, At: time.Unix(0, f.At)})
+		out.Factors = append(out.Factors, Factor{Method: f.Method, At: time.Unix(0, f.At), verified: f.Verified})
 	}
 	if c := s.Client; c != nil {
 		var addr netip.Addr

@@ -3,6 +3,22 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: the security review of v0.3.0 (M8.4)
+
+- **Review:** [review 0027](reviews/0027-m8.4-security.md) of everything
+  since v0.2.0, by Gemini 4 Hydrogen (XHigh), about 505k tokens (a first
+  call was cut off). Twelve findings: nine fixed, two in part, one
+  declined. The serious ones: an attacker's own device let a sign-in with
+  no login escape the address's counter; a silent sign-in at a provider
+  met `Within`; a flow could finish on a credential removed since its
+  proof (passkeys and authenticator apps too); `Unlink` could panic; the
+  shop's sign-in button was a GET any page could trigger.
+- **Decided for you:** amendment A28. Private-address blocking for
+  provider endpoints declined again: company providers live there.
+- **Next:** M8.5, the tags `v0.3.0`, `authschema/v0.3.0`,
+  `passkey/v0.3.0` and `oidc/v0.3.0`.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: OIDC in the schema and the shop (M8.3)
 
 - **Landed:** `authschema.OIDC()`, one provider's keys with pinned getter

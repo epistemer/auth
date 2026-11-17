@@ -386,7 +386,9 @@ func (a *Auth) eachSecret(tx *bolt.Tx, f func(user UserID, sealed []byte, set fu
 		if err := proto.Unmarshal(v, rec); err != nil {
 			return err
 		}
-		if len(rec.Pending) > 0 {
+		// Only an authenticator app's enrollment holds a sealed secret; a
+		// module's pending credential isn't one (review 0027).
+		if len(rec.Pending) > 0 && Purpose(rec.Purpose) == PurposeEnroll && rec.EnrollMethod == MethodTOTP {
 			flows = append(flows, pending{k, rec})
 		}
 		return nil

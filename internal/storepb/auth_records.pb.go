@@ -88,7 +88,10 @@ type Factor struct {
 	// SHA-256 of the normalized address, never the address.
 	Channel []byte `protobuf:"bytes,3,opt,name=channel,proto3" json:"channel,omitempty"`
 	// A module's proof that counts as two factors on its own (§5.5.1).
-	Verified      bool `protobuf:"varint,4,opt,name=verified,proto3" json:"verified,omitempty"`
+	Verified bool `protobuf:"varint,4,opt,name=verified,proto3" json:"verified,omitempty"`
+	// The credential a module's proof used, as the SHA-256 of its key, so a
+	// flow can't finish on a credential removed since (review 0027).
+	Credential    []byte `protobuf:"bytes,5,opt,name=credential,proto3" json:"credential,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -149,6 +152,13 @@ func (x *Factor) GetVerified() bool {
 		return x.Verified
 	}
 	return false
+}
+
+func (x *Factor) GetCredential() []byte {
+	if x != nil {
+		return x.Credential
+	}
+	return nil
 }
 
 // Client is the client as seen when a record was made.
@@ -1364,12 +1374,15 @@ var File_auth_records_proto protoreflect.FileDescriptor
 
 const file_auth_records_proto_rawDesc = "" +
 	"\n" +
-	"\x12auth_records.proto\x12\rauth.store.v1\"f\n" +
+	"\x12auth_records.proto\x12\rauth.store.v1\"\x86\x01\n" +
 	"\x06Factor\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x0e\n" +
 	"\x02at\x18\x02 \x01(\x03R\x02at\x12\x18\n" +
 	"\achannel\x18\x03 \x01(\fR\achannel\x12\x1a\n" +
-	"\bverified\x18\x04 \x01(\bR\bverified\";\n" +
+	"\bverified\x18\x04 \x01(\bR\bverified\x12\x1e\n" +
+	"\n" +
+	"credential\x18\x05 \x01(\fR\n" +
+	"credential\";\n" +
 	"\x06Client\x12\x12\n" +
 	"\x04addr\x18\x01 \x01(\fR\x04addr\x12\x1d\n" +
 	"\n" +

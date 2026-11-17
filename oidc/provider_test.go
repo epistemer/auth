@@ -49,6 +49,7 @@ type idp struct {
 	rawToken    func(payload []byte) string // makes the id_token, when set
 	public      bool                        // the client is public: no secret
 	sawSecret   bool                        // a request carried a secret
+	oddKey      bool                        // the key set holds a key go-jose can't read
 }
 
 type grant struct {
@@ -115,11 +116,15 @@ func (p *idp) jwks(w http.ResponseWriter, _ *http.Request) {
 	if p.keyUse != "" {
 		use = p.keyUse
 	}
-	keys := []jose.JSONWebKey{{Key: &p.key.PublicKey, KeyID: p.kid, Algorithm: "RS256", Use: use}}
+	keys := []any{jose.JSONWebKey{Key: &p.key.PublicKey, KeyID: p.kid, Algorithm: "RS256", Use: use}}
 	if p.ec != nil {
 		keys = append(keys, jose.JSONWebKey{Key: &p.ec.PublicKey, KeyID: "ec1", Algorithm: "ES256", Use: "sig"})
 	}
-	json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: keys})
+	if p.oddKey {
+		// A key of a kind go-jose doesn't read, beside the good ones.
+		keys = append([]any{map[string]string{"kty": "OKP", "crv": "X25519", "x": "AAAA", "use": "enc"}}, keys...)
+	}
+	json.NewEncoder(w).Encode(map[string]any{"keys": keys})
 }
 
 func (p *idp) token(w http.ResponseWriter, r *http.Request) {

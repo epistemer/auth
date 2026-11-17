@@ -321,6 +321,9 @@ func (a *Auth) viewOf(ctx context.Context, rec *storepb.Flow, sess *storepb.Sess
 		}
 		v := view{verified: verified, ready: verified || pol.AllowUnverified}
 		if !verified {
+			if seconds, err = a.notSameMailbox(ctx, u, proofs, seconds); err != nil {
+				return view{}, err
+			}
 			seconds = slices.DeleteFunc(seconds, func(m string) bool { return proven(func(p string) bool { return p == m }) })
 			v.offers = seconds
 			v.cannot = !pol.AllowUnverified && len(seconds) == 0
@@ -1104,5 +1107,60 @@ func (a *Auth) spend(tx *bolt.Tx, hash []byte) ([]*storepb.Factor, error) {
 	if len(proofs) != len(rec.Proofs) {
 		return nil, errChanged
 	}
+	// A proof stands only while the credential it used does: one removed,
+	// unlinked or reset since can't finish the flow (review 0027).
+	if Purpose(rec.Purpose) != PurposeEnroll {
+		for _, p := range proofs {
+			ok, err := proofStandsTx(tx, UserID(rec.UserId), p)
+			if err != nil || !ok {
+				if err == nil {
+					err = errChanged
+				}
+				return nil, err
+			}
+		}
+	}
 	return proofs, store.Delete(tx, store.Flows, hash)
+}
+
+// proofStandsTx reports whether the credential a proof used is still the
+// user's: a module's by its key, an authenticator app's by the method.
+func proofStandsTx(tx *bolt.Tx, user UserID, p *storepb.Factor) (bool, error) {
+	switch {
+	case len(p.Credential) > 0:
+		key := append(store.Prefix([]byte(user), []byte(p.Method)), p.Credential...)
+		return store.B(tx, store.Credentials).Get(key) != nil, nil
+	case p.Method == MethodTOTP:
+		found := false
+		err := store.Scan(tx, store.Credentials, store.Prefix([]byte(user), []byte(MethodTOTP)), func(_, _ []byte) error {
+			found = true
+			return nil
+		})
+		return found, err
+	}
+	return true, nil
+}
+
+// notSameMailbox drops from seconds the codes that would go to a mailbox a
+// proof already showed control of: with it they make one factor (§5.7.2),
+// so they mustn't be offered as a second (review 0027).
+func (a *Auth) notSameMailbox(ctx context.Context, u User, proofs []*storepb.Factor, seconds []string) ([]string, error) {
+	out := seconds[:0:0]
+	for _, m := range seconds {
+		ch, ok := codeChannel(m)
+		if !ok {
+			out = append(out, m)
+			continue
+		}
+		addr, err := a.address(ctx, u.ID, ch)
+		if err != nil {
+			return nil, err
+		}
+		key := channelKey(addr)
+		if key != nil && slices.ContainsFunc(proofs, func(p *storepb.Factor) bool { return bytes.Equal(p.Channel, key) && p.Method != m }) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }

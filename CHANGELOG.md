@@ -4,7 +4,13 @@ All notable changes to this module and its nested modules (`authschema`).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [v0.3.0] - 2026-11-17
+
+OpenID Connect: signing in with an identity provider, identities linked
+to one user and never found by email, and sign-up of new users through
+`Link`, as locked by epistemer on 2026-11-17 (amendments A25–A28,
+[docs/interface.md](docs/interface.md) §10). Released with
+`authschema/v0.3.0`, `passkey/v0.3.0` and `oidc/v0.3.0`.
 
 ### Added
 
@@ -30,6 +36,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 - The core no longer names passkeys for address-only throttling;
   `auth/passkey` implements `AddressOnly`.
+- `Finish` refuses a flow whose proof's credential (a passkey, an
+  authenticator app, an identity) was removed since (A28).
 
 ## [v0.2.0] - 2026-11-17
 
@@ -97,5 +105,6 @@ amendments A1–A20 ([docs/interface.md](docs/interface.md) §10).
 - `authschema`: the cfgx group `auth`, with every key's range.
 - `examples/shop`: a toy shop with web and API sign-in.
 
+[v0.3.0]: https://github.com/epistemer/auth/releases/tag/v0.3.0
 [v0.2.0]: https://github.com/epistemer/auth/releases/tag/v0.2.0
 [v0.1.0]: https://github.com/epistemer/auth/releases/tag/v0.1.0

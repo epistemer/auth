@@ -3,6 +3,24 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: the security review of v0.2.0 (M7.4)
+
+- **Review:** [review 0023](reviews/0023-m7.4-security.md) of everything
+  since v0.1.0, by Gemini 4 Hydrogen (XHigh) at the highest effort
+  available (about 419k tokens). Argon, which the roadmap means for this,
+  is out of quota for about four more days; nothing waits for a quota.
+  Four findings, none high: a `Challenge` racing the first proof could
+  keep stale options, an RSA key had no upper size, the shop's passkey
+  routes didn't check a flow's purpose, `passkey.New` panicked on a typed
+  nil. All fixed, the shop's rate limit left to apps; each fix has a test
+  that fails without it.
+- **Decided for you:** amendment A24 (a stale `Challenge` is refused; RSA
+  keys at most 4096 bits). Not sending the fixes back for a check: they
+  are small and mutation-tested, and a check costs about 700k tokens.
+- **Next:** M7.5, the tags `v0.2.0`, `authschema/v0.2.0` and
+  `passkey/v0.2.0`, the skill and your global CLAUDE.md.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: passkeys in the schema and the shop (M7.3)
 
 - **Landed:** `authschema.Group` takes nested groups, and

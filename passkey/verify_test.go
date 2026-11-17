@@ -422,6 +422,10 @@ func TestNew(t *testing.T) {
 	if _, err := New(nil); err == nil {
 		t.Error("nil: accepted")
 	}
+	var typedNil *config
+	if _, err := New(typedNil); err == nil {
+		t.Error("a typed nil: accepted")
+	}
 	bad := map[string]config{
 		"no issuer":        {"", "toyshop.example", nil},
 		"capitals":         {"Toy", "Toyshop.example", nil},
@@ -567,6 +571,7 @@ func TestRegistrationKeys(t *testing.T) {
 		"RSA exponent 1":   {cose(t, map[int]any{1: 3, 3: -257, -1: rsa2048.N.Bytes(), -2: []byte{1}}), "malformed"},
 		"RSA even e":       {cose(t, map[int]any{1: 3, 3: -257, -1: rsa2048.N.Bytes(), -2: []byte{4}}), "malformed"},
 		"RSA huge e":       {cose(t, map[int]any{1: 3, 3: -257, -1: rsa2048.N.Bytes(), -2: []byte{0x80, 0, 0, 1}}), "malformed"},
+		"RSA of 4097":      {cose(t, map[int]any{1: 3, 3: -257, -1: append([]byte{1}, make([]byte, 512)...), -2: []byte{1, 0, 1}}), "malformed"},
 		"short Ed25519":    {cose(t, map[int]any{1: 1, 3: -8, -1: 6, -2: []byte{1}}), "malformed"},
 		"Ed25519 as RS256": {cose(t, map[int]any{1: 1, 3: -257, -1: 6, -2: make([]byte, 32)}), "malformed"},
 	} {

@@ -408,6 +408,26 @@ func TestPasskey(t *testing.T) {
 		t.Errorf("a payout after the step-up: %d", code)
 	}
 
+	// An enrollment's answer posted to the sign-in route is refused, and
+	// the enrollment still finishes where it belongs; so is a sign-in's
+	// posted to the enrollment route; and a body past 64 KiB.
+	second := passkeytest.New(t, "https://toyshop.example")
+	_, body = w.post(laptop, "/passkey/enroll", nil)
+	created := second.Create(optionsOf(t, body))
+	if code, body := w.postJSON(laptop, "/passkey/prove", created); code != http.StatusBadRequest {
+		t.Errorf("an enrollment at /passkey/prove: %d %v", code, body)
+	}
+	if code, body := w.postJSON(laptop, "/passkey/enroll/finish", bytes.Repeat([]byte("a"), 64<<10+1)); code != http.StatusRequestEntityTooLarge {
+		t.Errorf("a body past 64 KiB: %d %v", code, body)
+	}
+	if code, body := w.postJSON(laptop, "/passkey/enroll/finish", created); code != 200 {
+		t.Errorf("the enrollment, where it belongs: %d %v", code, body)
+	}
+	_, body = w.post(laptop, "/passkey/options", nil)
+	if code, body := w.postJSON(laptop, "/passkey/enroll/finish", pk.Get(optionsOf(t, body))); code != http.StatusBadRequest {
+		t.Errorf("a sign-in at /passkey/enroll/finish: %d %v", code, body)
+	}
+
 	// A passkey nobody enrolled is refused, as a wrong password is.
 	stranger := passkeytest.New(t, "https://toyshop.example")
 	stranger.Create(json.RawMessage(`{"rp":{"id":"toyshop.example"},"user":{"id":"dTk"},"challenge":"AAAA"}`))

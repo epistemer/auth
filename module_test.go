@@ -15,6 +15,7 @@ import (
 	"github.com/epistemer/errors"
 	bolt "go.etcd.io/bbolt"
 
+	"github.com/epistemer/auth/internal/secrets"
 	"github.com/epistemer/auth/internal/store"
 	"github.com/epistemer/auth/internal/storepb"
 )
@@ -32,7 +33,8 @@ type fakeMethod struct {
 	mu       sync.Mutex
 	starts   []MethodInput
 	verifies int
-	stateN   int // when set, Start keeps this many bytes of state
+	stateN   int    // when set, Start keeps this many bytes of state
+	onStart  func() // when set, runs inside Start
 	// verify, when set, replaces Verify's own answer after the challenge
 	// check.
 	verify func(in MethodInput, p fakeProof) (MethodResult, error)
@@ -57,8 +59,11 @@ func (m *fakeMethod) Name() string { return m.name }
 func (m *fakeMethod) Start(_ context.Context, in MethodInput) (any, []byte, error) {
 	m.mu.Lock()
 	m.starts = append(m.starts, in)
-	n := m.stateN
+	n, hook := m.stateN, m.onStart
 	m.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 	if n == 0 {
 		n = 16
 	}
@@ -1190,5 +1195,41 @@ func TestModuleOwnLabelCleaned(t *testing.T) {
 	fs, _ := k.Factors(k.ctx, "u1")
 	if len(fs) != 1 || fs[0].Label != ("Phone" + strings.Repeat("a", 100))[:64] {
 		t.Errorf("label %q", fs[0].Label)
+	}
+}
+
+// Review 0023, finding 1: a proof made while Start ran makes its options
+// stale, and the Challenge is refused, storing nothing; past its caps the
+// method isn't asked.
+func TestModuleChallengeRacesProof(t *testing.T) {
+	k, m := newPasskeyKit(t)
+	k.addKey(t, "u1", MethodPasskey, "sara-1")
+	f, _ := k.SignIn(k.ctx, "sara", Cookie())
+	m.onStart = func() {
+		m.onStart = nil
+		if _, err := k.Prove(k.ctx, f.Token, Password(goodPassword)); err != nil && !errors.Is(err, ErrCannotVerify) {
+			t.Error(err)
+		}
+	}
+	if _, err := k.Challenge(k.ctx, f.Token, MethodPasskey); !errors.Is(err, ErrMethodUnavailable) {
+		t.Fatalf("a Challenge raced by a proof: %v", err)
+	}
+	rec, _ := k.loadFlow(secrets.Hash(f.Token))
+	if _, ok := rec.MethodState[stateKey(MethodPasskey)]; ok || rec.Challenges[MethodPasskey] != 0 {
+		t.Errorf("stale state stored: %+v", rec.Challenges)
+	}
+	// Asked again, it is told the user.
+	k.challenge(t, k.ctx, f.Token, MethodPasskey)
+	if in := m.lastStart(t); in.User == nil || len(in.Credentials) != 1 {
+		t.Errorf("then Start was told %+v", in)
+	}
+
+	g, _ := k.SignInWithout(k.ctx, Cookie())
+	for range maxChallenges {
+		k.challenge(t, k.ctx, g.Token, MethodPasskey)
+	}
+	n := len(m.starts)
+	if _, err := k.Challenge(k.ctx, g.Token, MethodPasskey); !errors.Is(err, ErrMethodUnavailable) || len(m.starts) != n {
+		t.Errorf("past the cap: %v, Start called %d more", err, len(m.starts)-n)
 	}
 }

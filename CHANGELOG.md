@@ -15,6 +15,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
   code sent there are one factor.
 - `AddressOnly`, the optional interface of a method whose attempts count
   by address alone.
+- The nested module `github.com/epistemer/auth/oidc`: signing in with an
+  OpenID Connect provider (authorization code with PKCE) on go-oidc and
+  x/oauth2, with `oidc.New` and `oidc.Callback` (amendments A25, A27).
 
 ### Changed
 

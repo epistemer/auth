@@ -8,6 +8,11 @@
 >
 > The design and the options it rejected are in
 > [ADR 0001](adr/0001-one-flow.md). This file is the contract.
+>
+> **Pending:** the passkey section and its amendments to §4.2, §4.3, §4.9,
+> §5.1.3, §5.5 and §9 are drafted in
+> [interface-passkey.md](interface-passkey.md), waiting for epistemer's
+> lock. Until then this file is the whole contract.
 
 ## 1. Scope
 

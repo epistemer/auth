@@ -562,10 +562,15 @@ type Flow struct {
 	Without bool `protobuf:"varint,17,opt,name=without,proto3" json:"without,omitempty"`
 	// A module method's Challenges and refused proofs in this flow, by method
 	// (§5.5.9).
-	Challenges    map[string]uint32 `protobuf:"bytes,18,rep,name=challenges,proto3" json:"challenges,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	Refusals      map[string]uint32 `protobuf:"bytes,19,rep,name=refusals,proto3" json:"refusals,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Challenges map[string]uint32 `protobuf:"bytes,18,rep,name=challenges,proto3" json:"challenges,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	Refusals   map[string]uint32 `protobuf:"bytes,19,rep,name=refusals,proto3" json:"refusals,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	// SignInWithout: a module proved an identity no user holds (A25). Its
+	// credential waits in pending, and its proof here, until Link.
+	UnlinkedMethod string    `protobuf:"bytes,20,opt,name=unlinked_method,json=unlinkedMethod,proto3" json:"unlinked_method,omitempty"`
+	Unlinked       *Identity `protobuf:"bytes,21,opt,name=unlinked,proto3" json:"unlinked,omitempty"`
+	PendingProof   *Factor   `protobuf:"bytes,22,opt,name=pending_proof,json=pendingProof,proto3" json:"pending_proof,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Flow) Reset() {
@@ -731,6 +736,97 @@ func (x *Flow) GetRefusals() map[string]uint32 {
 	return nil
 }
 
+func (x *Flow) GetUnlinkedMethod() string {
+	if x != nil {
+		return x.UnlinkedMethod
+	}
+	return ""
+}
+
+func (x *Flow) GetUnlinked() *Identity {
+	if x != nil {
+		return x.Unlinked
+	}
+	return nil
+}
+
+func (x *Flow) GetPendingProof() *Factor {
+	if x != nil {
+		return x.PendingProof
+	}
+	return nil
+}
+
+// Identity is an identity a module proved (issuer and subject), as Link
+// shows it to the app.
+type Identity struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Issuer        string                 `protobuf:"bytes,1,opt,name=issuer,proto3" json:"issuer,omitempty"`
+	Subject       string                 `protobuf:"bytes,2,opt,name=subject,proto3" json:"subject,omitempty"`
+	Email         string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	EmailVerified bool                   `protobuf:"varint,4,opt,name=email_verified,json=emailVerified,proto3" json:"email_verified,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Identity) Reset() {
+	*x = Identity{}
+	mi := &file_auth_records_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Identity) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Identity) ProtoMessage() {}
+
+func (x *Identity) ProtoReflect() protoreflect.Message {
+	mi := &file_auth_records_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Identity.ProtoReflect.Descriptor instead.
+func (*Identity) Descriptor() ([]byte, []int) {
+	return file_auth_records_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Identity) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
+func (x *Identity) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *Identity) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *Identity) GetEmailVerified() bool {
+	if x != nil {
+		return x.EmailVerified
+	}
+	return false
+}
+
 // Credential is the value of credentials/<user>\x00<method>\x00sha256(key).
 type Credential struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
@@ -749,7 +845,7 @@ type Credential struct {
 
 func (x *Credential) Reset() {
 	*x = Credential{}
-	mi := &file_auth_records_proto_msgTypes[6]
+	mi := &file_auth_records_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -761,7 +857,7 @@ func (x *Credential) String() string {
 func (*Credential) ProtoMessage() {}
 
 func (x *Credential) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_records_proto_msgTypes[6]
+	mi := &file_auth_records_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -774,7 +870,7 @@ func (x *Credential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Credential.ProtoReflect.Descriptor instead.
 func (*Credential) Descriptor() ([]byte, []int) {
-	return file_auth_records_proto_rawDescGZIP(), []int{6}
+	return file_auth_records_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Credential) GetMethod() string {
@@ -830,7 +926,7 @@ type TOTPData struct {
 
 func (x *TOTPData) Reset() {
 	*x = TOTPData{}
-	mi := &file_auth_records_proto_msgTypes[7]
+	mi := &file_auth_records_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -842,7 +938,7 @@ func (x *TOTPData) String() string {
 func (*TOTPData) ProtoMessage() {}
 
 func (x *TOTPData) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_records_proto_msgTypes[7]
+	mi := &file_auth_records_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -855,7 +951,7 @@ func (x *TOTPData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TOTPData.ProtoReflect.Descriptor instead.
 func (*TOTPData) Descriptor() ([]byte, []int) {
-	return file_auth_records_proto_rawDescGZIP(), []int{7}
+	return file_auth_records_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *TOTPData) GetSealedSecret() []byte {
@@ -883,7 +979,7 @@ type RecoveryData struct {
 
 func (x *RecoveryData) Reset() {
 	*x = RecoveryData{}
-	mi := &file_auth_records_proto_msgTypes[8]
+	mi := &file_auth_records_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -895,7 +991,7 @@ func (x *RecoveryData) String() string {
 func (*RecoveryData) ProtoMessage() {}
 
 func (x *RecoveryData) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_records_proto_msgTypes[8]
+	mi := &file_auth_records_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,7 +1004,7 @@ func (x *RecoveryData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecoveryData.ProtoReflect.Descriptor instead.
 func (*RecoveryData) Descriptor() ([]byte, []int) {
-	return file_auth_records_proto_rawDescGZIP(), []int{8}
+	return file_auth_records_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RecoveryData) GetHashes() [][]byte {
@@ -941,7 +1037,7 @@ type Device struct {
 
 func (x *Device) Reset() {
 	*x = Device{}
-	mi := &file_auth_records_proto_msgTypes[9]
+	mi := &file_auth_records_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -953,7 +1049,7 @@ func (x *Device) String() string {
 func (*Device) ProtoMessage() {}
 
 func (x *Device) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_records_proto_msgTypes[9]
+	mi := &file_auth_records_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -966,7 +1062,7 @@ func (x *Device) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Device.ProtoReflect.Descriptor instead.
 func (*Device) Descriptor() ([]byte, []int) {
-	return file_auth_records_proto_rawDescGZIP(), []int{9}
+	return file_auth_records_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Device) GetId() string {
@@ -1039,7 +1135,7 @@ type Link struct {
 
 func (x *Link) Reset() {
 	*x = Link{}
-	mi := &file_auth_records_proto_msgTypes[10]
+	mi := &file_auth_records_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1051,7 +1147,7 @@ func (x *Link) String() string {
 func (*Link) ProtoMessage() {}
 
 func (x *Link) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_records_proto_msgTypes[10]
+	mi := &file_auth_records_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1064,7 +1160,7 @@ func (x *Link) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Link.ProtoReflect.Descriptor instead.
 func (*Link) Descriptor() ([]byte, []int) {
-	return file_auth_records_proto_rawDescGZIP(), []int{10}
+	return file_auth_records_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Link) GetPurpose() int32 {
@@ -1140,7 +1236,7 @@ type Counter struct {
 
 func (x *Counter) Reset() {
 	*x = Counter{}
-	mi := &file_auth_records_proto_msgTypes[11]
+	mi := &file_auth_records_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1152,7 +1248,7 @@ func (x *Counter) String() string {
 func (*Counter) ProtoMessage() {}
 
 func (x *Counter) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_records_proto_msgTypes[11]
+	mi := &file_auth_records_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1165,7 +1261,7 @@ func (x *Counter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Counter.ProtoReflect.Descriptor instead.
 func (*Counter) Descriptor() ([]byte, []int) {
-	return file_auth_records_proto_rawDescGZIP(), []int{11}
+	return file_auth_records_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Counter) GetFailures() uint32 {
@@ -1215,7 +1311,7 @@ type AccessGroup struct {
 
 func (x *AccessGroup) Reset() {
 	*x = AccessGroup{}
-	mi := &file_auth_records_proto_msgTypes[12]
+	mi := &file_auth_records_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1323,7 @@ func (x *AccessGroup) String() string {
 func (*AccessGroup) ProtoMessage() {}
 
 func (x *AccessGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_auth_records_proto_msgTypes[12]
+	mi := &file_auth_records_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1240,7 +1336,7 @@ func (x *AccessGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccessGroup.ProtoReflect.Descriptor instead.
 func (*AccessGroup) Descriptor() ([]byte, []int) {
-	return file_auth_records_proto_rawDescGZIP(), []int{12}
+	return file_auth_records_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AccessGroup) GetId() string {
@@ -1314,7 +1410,7 @@ const file_auth_records_proto_rawDesc = "" +
 	"\x04sent\x18\x04 \x01(\x03R\x04sent\x12\x18\n" +
 	"\aexpires\x18\x05 \x01(\x03R\aexpires\x12\x14\n" +
 	"\x05tries\x18\x06 \x01(\rR\x05tries\x12\x14\n" +
-	"\x05burnt\x18\a \x01(\bR\x05burnt\"\x92\a\n" +
+	"\x05burnt\x18\a \x01(\bR\x05burnt\"\xac\b\n" +
 	"\x04Flow\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\x05R\apurpose\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
@@ -1338,7 +1434,10 @@ const file_auth_records_proto_rawDesc = "" +
 	"\n" +
 	"challenges\x18\x12 \x03(\v2#.auth.store.v1.Flow.ChallengesEntryR\n" +
 	"challenges\x12=\n" +
-	"\brefusals\x18\x13 \x03(\v2!.auth.store.v1.Flow.RefusalsEntryR\brefusals\x1a>\n" +
+	"\brefusals\x18\x13 \x03(\v2!.auth.store.v1.Flow.RefusalsEntryR\brefusals\x12'\n" +
+	"\x0funlinked_method\x18\x14 \x01(\tR\x0eunlinkedMethod\x123\n" +
+	"\bunlinked\x18\x15 \x01(\v2\x17.auth.store.v1.IdentityR\bunlinked\x12:\n" +
+	"\rpending_proof\x18\x16 \x01(\v2\x15.auth.store.v1.FactorR\fpendingProof\x1a>\n" +
 	"\x10MethodStateEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\x1a=\n" +
@@ -1347,7 +1446,12 @@ const file_auth_records_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\x1a;\n" +
 	"\rRefusalsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\"\x8a\x01\n" +
+	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01\"y\n" +
+	"\bIdentity\x12\x16\n" +
+	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12\x18\n" +
+	"\asubject\x18\x02 \x01(\tR\asubject\x12\x14\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\x12%\n" +
+	"\x0eemail_verified\x18\x04 \x01(\bR\remailVerified\"\x8a\x01\n" +
 	"\n" +
 	"Credential\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x10\n" +
@@ -1409,7 +1513,7 @@ func file_auth_records_proto_rawDescGZIP() []byte {
 }
 
 var file_auth_records_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_auth_records_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_auth_records_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_auth_records_proto_goTypes = []any{
 	(Carrier)(0),         // 0: auth.store.v1.Carrier
 	(*Factor)(nil),       // 1: auth.store.v1.Factor
@@ -1418,16 +1522,17 @@ var file_auth_records_proto_goTypes = []any{
 	(*Refresh)(nil),      // 4: auth.store.v1.Refresh
 	(*CodeState)(nil),    // 5: auth.store.v1.CodeState
 	(*Flow)(nil),         // 6: auth.store.v1.Flow
-	(*Credential)(nil),   // 7: auth.store.v1.Credential
-	(*TOTPData)(nil),     // 8: auth.store.v1.TOTPData
-	(*RecoveryData)(nil), // 9: auth.store.v1.RecoveryData
-	(*Device)(nil),       // 10: auth.store.v1.Device
-	(*Link)(nil),         // 11: auth.store.v1.Link
-	(*Counter)(nil),      // 12: auth.store.v1.Counter
-	(*AccessGroup)(nil),  // 13: auth.store.v1.AccessGroup
-	nil,                  // 14: auth.store.v1.Flow.MethodStateEntry
-	nil,                  // 15: auth.store.v1.Flow.ChallengesEntry
-	nil,                  // 16: auth.store.v1.Flow.RefusalsEntry
+	(*Identity)(nil),     // 7: auth.store.v1.Identity
+	(*Credential)(nil),   // 8: auth.store.v1.Credential
+	(*TOTPData)(nil),     // 9: auth.store.v1.TOTPData
+	(*RecoveryData)(nil), // 10: auth.store.v1.RecoveryData
+	(*Device)(nil),       // 11: auth.store.v1.Device
+	(*Link)(nil),         // 12: auth.store.v1.Link
+	(*Counter)(nil),      // 13: auth.store.v1.Counter
+	(*AccessGroup)(nil),  // 14: auth.store.v1.AccessGroup
+	nil,                  // 15: auth.store.v1.Flow.MethodStateEntry
+	nil,                  // 16: auth.store.v1.Flow.ChallengesEntry
+	nil,                  // 17: auth.store.v1.Flow.RefusalsEntry
 }
 var file_auth_records_proto_depIdxs = []int32{
 	0,  // 0: auth.store.v1.Session.carrier:type_name -> auth.store.v1.Carrier
@@ -1436,14 +1541,16 @@ var file_auth_records_proto_depIdxs = []int32{
 	0,  // 3: auth.store.v1.Flow.carrier:type_name -> auth.store.v1.Carrier
 	1,  // 4: auth.store.v1.Flow.proofs:type_name -> auth.store.v1.Factor
 	5,  // 5: auth.store.v1.Flow.codes:type_name -> auth.store.v1.CodeState
-	14, // 6: auth.store.v1.Flow.method_state:type_name -> auth.store.v1.Flow.MethodStateEntry
-	15, // 7: auth.store.v1.Flow.challenges:type_name -> auth.store.v1.Flow.ChallengesEntry
-	16, // 8: auth.store.v1.Flow.refusals:type_name -> auth.store.v1.Flow.RefusalsEntry
-	9,  // [9:9] is the sub-list for method output_type
-	9,  // [9:9] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	15, // 6: auth.store.v1.Flow.method_state:type_name -> auth.store.v1.Flow.MethodStateEntry
+	16, // 7: auth.store.v1.Flow.challenges:type_name -> auth.store.v1.Flow.ChallengesEntry
+	17, // 8: auth.store.v1.Flow.refusals:type_name -> auth.store.v1.Flow.RefusalsEntry
+	7,  // 9: auth.store.v1.Flow.unlinked:type_name -> auth.store.v1.Identity
+	1,  // 10: auth.store.v1.Flow.pending_proof:type_name -> auth.store.v1.Factor
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_auth_records_proto_init() }
@@ -1457,7 +1564,7 @@ func file_auth_records_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_auth_records_proto_rawDesc), len(file_auth_records_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

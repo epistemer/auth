@@ -4,6 +4,23 @@ All notable changes to this module and its nested modules (`authschema`).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Identities from modules (amendments A25, A26): `Flow.Unlinked` and
+  `Link`, so an identity no user holds can sign up a new user;
+  `Identities`, `IdentityInfo` and `Unlink`.
+- `MethodResult.Address`: a proof that shows control of an address and a
+  code sent there are one factor.
+- `AddressOnly`, the optional interface of a method whose attempts count
+  by address alone.
+
+### Changed
+
+- The core no longer names passkeys for address-only throttling;
+  `auth/passkey` implements `AddressOnly`.
+
 ## [v0.2.0] - 2026-11-17
 
 Passkeys: the engine drives methods from modules, and `auth/passkey` is

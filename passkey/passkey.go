@@ -213,6 +213,11 @@ func (r response) GoString() string { return r.String() }
 
 func (m *method) Name() string { return auth.MethodPasskey }
 
+// AddressOnly is true: a passkey proves a signature over the server's
+// challenge, with nothing to guess, so its attempts count toward the
+// address alone (§5.13.11, D43).
+func (m *method) AddressOnly() bool { return true }
+
 // The options' JSON, WebAuthn Level 3's PublicKeyCredentialCreationOptionsJSON
 // and PublicKeyCredentialRequestOptionsJSON, unwrapped (§4.11, D30).
 type (

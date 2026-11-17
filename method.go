@@ -40,7 +40,14 @@ type MethodResult struct {
 	Credential *Credential // to store, or to update
 	Verified   bool        // the proof counts as two factors
 	Unlinked   *Identity   // a valid identity that belongs to no user
+	Address    string      // an address the proof shows control of (§5.7.2)
 }
+
+// AddressOnly is an optional interface of a Method whose proofs have
+// nothing to guess, such as a signature over the server's challenge or a
+// provider's code: answering true, its attempts count toward the client
+// address's counter alone, or a trusted device's pair counter (§5.5.9).
+type AddressOnly interface{ AddressOnly() bool }
 
 // Identity is an identity a method proved, such as an OIDC subject.
 type Identity struct {

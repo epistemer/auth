@@ -30,11 +30,6 @@ const (
 // the method's section sets a limit (§5.13.2).
 var methodLimit = map[string]int{MethodPasskey: 20}
 
-// addrOnly are the methods whose attempts count toward the address's
-// counter alone, or a registered device's pair counter (§5.13.11): their
-// proofs are signatures over a challenge, with nothing to guess.
-var addrOnly = map[string]bool{MethodPasskey: true}
-
 // stateKey is where a flow keeps a module method's state, apart from the
 // core's own entries in the same map.
 func stateKey(method string) string { return "m:" + method }
@@ -294,7 +289,8 @@ func (a *Auth) challengeModule(ctx context.Context, hash []byte, rec *storepb.Fl
 // address's, or for a passkey the address's alone, or a registered
 // device's pair counter (§5.13.11). In a SignInWithout flow, before a
 // proof names the user, the device's owner stands for the user.
-func (a *Auth) moduleSubject(ctx context.Context, rec *storepb.Flow, method string) (subject, error) {
+func (a *Auth) moduleSubject(ctx context.Context, rec *storepb.Flow, m Method) (subject, error) {
+	method := m.Name()
 	r := rec
 	if rec.UserId == "" && rec.DeviceId != "" {
 		owner, err := a.deviceOwner(rec)
@@ -315,7 +311,8 @@ func (a *Auth) moduleSubject(ctx context.Context, rec *storepb.Flow, method stri
 		// attempt counts toward the address alone (A22, review 0021).
 		s.user = nil
 	}
-	s.module, s.addrOnly = method, addrOnly[method]
+	ao, ok := m.(AddressOnly)
+	s.module, s.addrOnly = method, ok && ao.AddressOnly()
 	return s, nil
 }
 
@@ -337,7 +334,7 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 		return before, ErrBadCredentials
 	}
 	// (b) Counted before it is checked.
-	sub, err := a.moduleSubject(ctx, rec, name)
+	sub, err := a.moduleSubject(ctx, rec, m)
 	if err != nil {
 		return before, err
 	}
@@ -367,9 +364,23 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 		own = verr
 	}
 	enroll := Purpose(rec.Purpose) == PurposeEnroll
+	// An identity no user holds (§5.14.7): kept for Link in a flow started
+	// by SignInWithout that knows no one yet; refused anywhere else.
+	if reason == "" && own == nil && res.Unlinked != nil && res.User != "" {
+		own = fmt.Errorf("auth: method %q named a user and an unlinked identity", name)
+	}
+	unlinked := reason == "" && own == nil && res.Unlinked != nil
+	if unlinked {
+		switch {
+		case enroll || !rec.Without || rec.UserId != "":
+			reason = "unlinked"
+		case res.Credential == nil || len(res.Credential.Key) == 0 || len(res.Credential.Key) > 1023:
+			own = fmt.Errorf("auth: method %q proved an unlinked identity with no credential", name)
+		}
+	}
 	// Rules 3 and 7: whom the proof names.
 	target := UserID(rec.UserId)
-	if reason == "" && own == nil {
+	if reason == "" && own == nil && !unlinked {
 		switch {
 		case in.User == nil && res.User == "":
 			// Told no user, it must name one: the flow's login can't stand
@@ -388,7 +399,7 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 	}
 	// Rule 8, from what was handed out; the store is checked again below.
 	var h handed
-	if reason == "" && own == nil {
+	if reason == "" && own == nil && !unlinked {
 		switch {
 		case enroll && (res.Credential == nil || len(res.Credential.Key) == 0):
 			own = fmt.Errorf("auth: method %q enrolled no credential", name)
@@ -404,7 +415,7 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 		}
 	}
 	var u User
-	if reason == "" && own == nil {
+	if reason == "" && own == nil && !unlinked {
 		if err := validID(target); err != nil {
 			reason = "user_mismatch"
 		} else if u, err = a.dir.Get(ctx, target); errors.Is(err, ErrNoUser) {
@@ -433,12 +444,18 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 		if !ok || !bytes.Equal(st, state) {
 			return errRace
 		}
+		// An identity waiting for Link takes no other proof, and one is kept
+		// only in a flow that still knows no one: a proof racing it can't
+		// leave another user's proof for Link to take (review 0025).
+		if cur.UnlinkedMethod != "" || unlinked && reason == "" && own == nil && (cur.UserId != "" || len(cur.Proofs) > 0) {
+			return errOffered
+		}
 		delete(cur.MethodState, stateKey(name))
 		put := func() error { return store.Put(tx, store.Flows, hash, cur) }
 		if own != nil {
 			return put()
 		}
-		if reason == "" && !enroll && res.Credential != nil {
+		if reason == "" && !enroll && !unlinked && res.Credential != nil {
 			owner, c, err := findCredentialTx(tx, name, res.Credential.Key)
 			if err != nil {
 				return err
@@ -447,7 +464,7 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 				reason = "changed"
 			}
 		}
-		if reason == "" && enroll && store.B(tx, store.CredentialKeys).Get(credentialIndex(name, res.Credential.Key)) != nil {
+		if reason == "" && (enroll || unlinked) && store.B(tx, store.CredentialKeys).Get(credentialIndex(name, res.Credential.Key)) != nil {
 			reason = "duplicate"
 		}
 		if reason != "" {
@@ -455,6 +472,20 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 				cur.Refusals = map[string]uint32{}
 			}
 			cur.Refusals[name]++
+			return put()
+		}
+		if unlinked {
+			// Kept, sealed in the flow, until Link names a user for it.
+			b, err := proto.Marshal(&storepb.Credential{
+				Method: name, Key: res.Credential.Key, Data: res.Credential.Data, Label: res.Credential.Label,
+			})
+			if err != nil {
+				return err
+			}
+			id := res.Unlinked
+			cur.Pending, cur.UnlinkedMethod = b, name
+			cur.Unlinked = &storepb.Identity{Issuer: id.Issuer, Subject: id.Subject, Email: id.Email, EmailVerified: id.EmailVerified}
+			cur.PendingProof = &storepb.Factor{Method: name, Verified: res.Verified, Channel: channelKey(res.Address)}
 			return put()
 		}
 		// (f) The flow's own checks.
@@ -476,10 +507,14 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 			return put()
 		}
 		// (g) The proof, and the credential's update or its pending copy.
-		f := &storepb.Factor{Method: name, At: now, Verified: res.Verified}
+		// A proof that shows control of an address came through it (§5.7.2).
+		f := &storepb.Factor{Method: name, At: now, Verified: res.Verified, Channel: channelKey(res.Address)}
 		if i := slices.IndexFunc(cur.Proofs, func(p *storepb.Factor) bool { return p.Method == name }); i >= 0 {
 			cur.Proofs[i].At = max(cur.Proofs[i].At, f.At)
 			cur.Proofs[i].Verified = cur.Proofs[i].Verified || f.Verified
+			if len(cur.Proofs[i].Channel) == 0 {
+				cur.Proofs[i].Channel = f.Channel
+			}
 		} else {
 			cur.Proofs = append(cur.Proofs, f)
 		}
@@ -509,6 +544,9 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 	case errors.Is(err, store.ErrNotFound):
 		_ = a.refund(at)
 		return before, ErrFlowExpired
+	case errors.Is(err, errOffered):
+		_ = a.refund(at)
+		return before, ErrMethodUnavailable
 	case errors.Is(err, errRace):
 		// Its Verify's answer is thrown away: nothing was judged, so its
 		// count is taken back. Each state is judged once, whatever races.
@@ -530,6 +568,14 @@ func (a *Auth) proveModule(ctx context.Context, token string, hash []byte, rec *
 	case stale:
 		_ = a.refund(at)
 		return before, ErrFlowExpired
+	}
+	if unlinked {
+		// No one is named yet: the attempt takes back its count.
+		if err := a.refund(at); err != nil {
+			return before, err
+		}
+		a.record(ctx, Event{Kind: "proof.accepted", Method: name, Reason: "unlinked"})
+		return a.flowOut(token, got, view{}), nil
 	}
 	// Clear the counters only of the user the proof named. One counted
 	// against another user (the owner of a device someone else presented)

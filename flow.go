@@ -58,6 +58,10 @@ type Flow struct {
 	Verified bool     // a SignIn or StepUp would end in a verified session
 	Offers   []string // the methods the UI may show next
 	Expires  time.Time
+	// Unlinked is a proved identity no user holds, in a flow started by
+	// SignInWithout: the app links it to a user it creates (Link), or
+	// starts again.
+	Unlinked *Identity
 
 	insecure bool
 }
@@ -261,6 +265,10 @@ type view struct {
 // look at the user at all, so a known and an unknown login answer alike
 // (§5.1.3). sess is the bound session of a StepUp; nil loads it.
 func (a *Auth) view(ctx context.Context, rec *storepb.Flow, sess *storepb.Session) (view, error) {
+	// An identity waiting for Link takes no other proof (§5.14.7).
+	if rec.UnlinkedMethod != "" {
+		return view{}, nil
+	}
 	v, err := a.viewOf(ctx, rec, sess)
 	// A module method past its caps is no longer offered in this flow
 	// (§5.5.9).
@@ -573,10 +581,15 @@ func (a *Auth) user(ctx context.Context, id UserID) (User, error) {
 }
 
 func (a *Auth) flowOut(token string, rec *storepb.Flow, v view) Flow {
-	return Flow{
+	f := Flow{
 		Token: token, Purpose: Purpose(rec.Purpose), Ready: v.ready, Verified: v.verified,
 		Offers: v.offers, Expires: time.Unix(0, rec.Expires), insecure: a.cfg.AuthCookieInsecure(),
 	}
+	if rec.UnlinkedMethod != "" && rec.Unlinked != nil {
+		u := rec.Unlinked
+		f.Unlinked = &Identity{Issuer: u.Issuer, Subject: u.Subject, Email: u.Email, EmailVerified: u.EmailVerified}
+	}
+	return f
 }
 
 // loadFlow reads a live flow by its token's hash.

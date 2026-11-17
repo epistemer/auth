@@ -82,6 +82,7 @@ type directory struct {
 	mu    sync.Mutex
 	users map[string]User // by login
 	addrs map[UserID]map[Channel]string
+	onGet func() // when set, runs once at the next Get
 }
 
 func (d *directory) Find(_ context.Context, login string) (User, error) {
@@ -94,6 +95,13 @@ func (d *directory) Find(_ context.Context, login string) (User, error) {
 }
 
 func (d *directory) Get(_ context.Context, id UserID) (User, error) {
+	d.mu.Lock()
+	hook := d.onGet
+	d.onGet = nil
+	d.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for _, u := range d.users {

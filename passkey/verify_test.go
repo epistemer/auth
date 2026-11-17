@@ -417,6 +417,13 @@ func TestSignature(t *testing.T) {
 	wantRefused(t, "another key", err, "signature")
 }
 
+// §5.13.11, D43: the method counts by address alone.
+func TestAddressOnly(t *testing.T) {
+	if ao, ok := any(newMethod(t)).(auth.AddressOnly); !ok || !ao.AddressOnly() {
+		t.Error("not AddressOnly")
+	}
+}
+
 // §4.11: New refuses each bad config.
 func TestNew(t *testing.T) {
 	if _, err := New(nil); err == nil {

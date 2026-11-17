@@ -26,3 +26,7 @@ require (
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )
+
+// Until the core's v0.3.0 is tagged (ADR 0004), the module builds against
+// the core beside it.
+replace github.com/epistemer/auth => ../

@@ -29,6 +29,7 @@ import (
 type fakeMethod struct {
 	name     string
 	verified bool // its proofs count as two factors
+	addrOnly bool // AddressOnly answers true
 
 	mu       sync.Mutex
 	starts   []MethodInput
@@ -54,7 +55,8 @@ type fakeProof struct {
 
 func (p fakeProof) Method() string { return p.method }
 
-func (m *fakeMethod) Name() string { return m.name }
+func (m *fakeMethod) Name() string      { return m.name }
+func (m *fakeMethod) AddressOnly() bool { return m.addrOnly }
 
 func (m *fakeMethod) Start(_ context.Context, in MethodInput) (any, []byte, error) {
 	m.mu.Lock()
@@ -117,7 +119,7 @@ func (m *fakeMethod) lastStart(t *testing.T) MethodInput {
 
 func newPasskeyKit(t *testing.T, opts ...Option) (*kit, *fakeMethod) {
 	t.Helper()
-	m := &fakeMethod{name: MethodPasskey, verified: true}
+	m := &fakeMethod{name: MethodPasskey, verified: true, addrOnly: true}
 	k := newKit(t, append([]Option{WithMethods(m), WithFirst(MethodPassword, MethodPasskey)}, opts...)...)
 	k.addUser(t, "sara", User{ID: "u1", Name: "sara"}, goodPassword, saraMail)
 	k.addUser(t, "omar", User{ID: "u2", Name: "omar"}, goodPassword, "omar@toyshop.example")

@@ -107,6 +107,20 @@ message Flow {
   // (§5.5.9).
   map<string, uint32> challenges = 18;
   map<string, uint32> refusals = 19;
+  // SignInWithout: a module proved an identity no user holds (A25). Its
+  // credential waits in pending, and its proof here, until Link.
+  string unlinked_method = 20;
+  Identity unlinked = 21;
+  Factor pending_proof = 22;
+}
+
+// Identity is an identity a module proved (issuer and subject), as Link
+// shows it to the app.
+message Identity {
+  string issuer = 1;
+  string subject = 2;
+  string email = 3;
+  bool email_verified = 4;
 }
 
 // Credential is the value of credentials/<user>\x00<method>\x00sha256(key).

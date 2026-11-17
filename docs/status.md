@@ -3,6 +3,24 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: identities in the core (M8.1)
+
+- **Landed:** an identity a module proves that no user holds waits in a
+  `SignInWithout` flow (`Flow.Unlinked`) until `Link` names a user new to
+  auth; `Identities` and `Unlink` (which refuses the last way in);
+  `MethodResult.Address`, so a provider's mailbox and a code to it are
+  one factor; `AddressOnly` replaces the core's list, and `auth/passkey`
+  implements it (built against the core beside it again until v0.3.0).
+- **Tests:** a fake identity provider drives each rule; 31 mutations,
+  every one caught. All modules pass under `-race`.
+- **Review:** [review 0025](reviews/0025-m8.1-core.md), Gemini 4
+  Hydrogen (High), about 76k tokens. Five findings: a race between two
+  proofs on one flow (fixed), the cost of the new-to-auth scan (stops at
+  the first match), two smaller ones fixed, one declined.
+- **Decided for you:** amendment A26, where A25 was silent.
+- **Next:** M8.2, the `auth/oidc` module.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: OIDC locked (M8.0 done)
 
 - **Landed:** you locked the OIDC section with every default. It is folded

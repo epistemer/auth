@@ -8,8 +8,9 @@ import (
 	"github.com/epistemer/auth/authschema"
 )
 
-// Auth is auth's own fragment: every app declares its keys the same way.
-var Auth = authschema.Group()
+// Auth is auth's own fragment, with passkeys: every app declares its keys
+// the same way.
+var Auth = authschema.Group(authschema.Passkey())
 
 // Server is the HTTP listener and the store.
 var Server = dsl.Group("server", "Web server",

@@ -10,8 +10,9 @@ The app owns its users. This package owns how they prove who they are:
   one engine, so throttling, audit events and protection against account
   enumeration exist once.
 - **Proofs:** passwords (argon2id, with a strength estimate), emailed or
-  texted codes and links, authenticator apps (TOTP) and recovery codes.
-  Passkeys and OpenID Connect come as modules after `v0.1.0`.
+  texted codes and links, authenticator apps (TOTP), recovery codes, and
+  passkeys (`auth/passkey`, a module of its own). OpenID Connect comes as a
+  module after `v0.2.0`.
 - **Sessions that record what was proven.** A session is verified or
   unverified, and remembers when each proof was made. Routes need a verified
   one unless they say otherwise, and a dangerous action can ask for a recent
@@ -35,6 +36,7 @@ page: the app's `Sender` delivers messages, and its handlers call the flows.
 ```sh
 go get github.com/epistemer/auth
 go get github.com/epistemer/auth/authschema # the cfgx schema fragment, for the app's settings
+go get github.com/epistemer/auth/passkey    # passkeys, if the app offers them
 ```
 
 Before `v1.0.0` the API may still change; [CHANGELOG.md](CHANGELOG.md) says
@@ -99,16 +101,41 @@ if err != nil {
 res.Write(w) // the session cookie
 ```
 
+### Passkeys
+
+`auth/passkey` is a method the engine drives. A passkey signs in alone and
+makes a verified session; it is also an enrolled second factor:
+
+```go
+var Auth = authschema.Group(authschema.Passkey()) // the schema: domain, origins
+
+pk, err := passkey.New(settings)
+a, err := auth.New(db, settings, directory, mailer,
+	auth.WithMethods(pk),
+	auth.WithFirst(auth.MethodPassword, auth.MethodPasskey),
+)
+
+flow, err := a.SignInWithout(ctx, auth.Cookie()) // as the sign-in page loads
+ch, err := a.Challenge(ctx, flow.Token, auth.MethodPasskey)
+// ch.Options goes to navigator.credentials.get; the answer comes back:
+flow, err = a.Prove(ctx, flow.Token, passkey.Response(body))
+res, err := a.Finish(ctx, flow.Token)
+```
+
+`passkey/passkeytest` is a software authenticator for an app's tests.
+
 The runnable examples on [pkg.go.dev](https://pkg.go.dev/github.com/epistemer/auth)
 cover signing in, stepping up, recovery and permissions, and
-[examples/shop](examples/shop) is a whole app: web and API sign-in, a step-up
-before payouts, and an end-to-end test.
+[examples/shop](examples/shop) is a whole app: web and API sign-in,
+passkeys, a step-up before payouts, and an end-to-end test.
 
-## What's not in v0.1
+## What's not in v0.2
 
-Passkeys and OpenID Connect (modules after `v0.1.0`), permissions on single
-resources, API keys for machines, a breach-corpus lookup, drawing QR codes,
-handlers and pages, and signing in by emailed link alone.
+OpenID Connect (a module after `v0.2.0`), permissions on single resources,
+API keys for machines, a breach-corpus lookup, drawing QR codes, handlers
+and pages, and signing in by emailed link alone. For passkeys: attestation
+trust, AAGUID names, related origins, conditional creation, extensions
+such as PRF, and accounts with a passkey and no password.
 
 ## Where to read
 

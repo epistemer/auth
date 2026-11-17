@@ -8,8 +8,8 @@ import (
 	"github.com/epistemer/auth/authschema"
 )
 
-// Auth is auth's own fragment.
-var Auth = authschema.Group()
+// Auth is auth's own fragment, with passkeys.
+var Auth = authschema.Group(authschema.Passkey())
 
 // App is the toy shop.
 var App = dsl.App("shop", "A toy shop", Auth)

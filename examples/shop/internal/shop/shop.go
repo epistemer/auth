@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/epistemer/auth"
 	"github.com/epistemer/auth/access"
+	"github.com/epistemer/auth/passkey"
 )
 
 // The shop's permissions.
@@ -119,16 +121,33 @@ type Shop struct {
 	Access *access.Access
 }
 
+// Config is what the shop reads: auth's keys and the passkeys'. The
+// settings cfgx generates from authschema.Group(authschema.Passkey())
+// satisfy it.
+type Config interface {
+	auth.Config
+	passkey.Config
+}
+
 // New builds the shop over a store, a config, a directory and an outbox.
-func New(db *bolt.DB, cfg auth.Config, dir auth.Directory, out auth.Sender, opts ...auth.Option) (*Shop, error) {
+func New(db *bolt.DB, cfg Config, dir auth.Directory, out auth.Sender, opts ...auth.Option) (*Shop, error) {
 	ac, err := access.New(db)
+	if err != nil {
+		return nil, err
+	}
+	pk, err := passkey.New(cfg)
 	if err != nil {
 		return nil, err
 	}
 	s := &Shop{Access: ac}
 	// Refusals by Load and Require answer like every other error: JSON.
 	reject := auth.WithReject(fail)
-	s.Auth, err = auth.New(db, cfg, dir, out, append([]auth.Option{auth.WithPolicy(s.policy), reject}, opts...)...)
+	base := []auth.Option{
+		auth.WithPolicy(s.policy), reject,
+		// A passkey signs in alone, or stands as the second proof.
+		auth.WithMethods(pk), auth.WithFirst(auth.MethodPassword, auth.MethodPasskey),
+	}
+	s.Auth, err = auth.New(db, cfg, dir, out, append(base, opts...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +171,14 @@ func (s *Shop) Handler() http.Handler {
 	mux.Handle("POST /step-up", web(a.Require(auth.Unverified)(http.HandlerFunc(s.stepUp))))
 	mux.Handle("POST /payouts/approve",
 		web(a.Require(s.Access.Can(PayoutApprove), auth.Within(5*time.Minute))(http.HandlerFunc(ok("approved")))))
+
+	// Passkeys: options for a sign-in with no login (the page's autofill),
+	// the answer to any passkey challenge the flow cookie names, and adding
+	// one from a verified session.
+	mux.Handle("POST /passkey/options", web(http.HandlerFunc(s.passkeyOptions)))
+	mux.Handle("POST /passkey/prove", web(http.HandlerFunc(s.passkeyProve)))
+	mux.Handle("POST /passkey/enroll", web(a.Require()(http.HandlerFunc(s.passkeyEnroll))))
+	mux.Handle("POST /passkey/enroll/finish", web(a.Require()(http.HandlerFunc(s.passkeyEnrolled))))
 
 	// The API: bearer tokens, no cookies, no cross-origin check. Its
 	// sign-in goes through Load too, which reads the client's address: the
@@ -187,10 +214,13 @@ func (s *Shop) signIn(w http.ResponseWriter, r *http.Request) {
 	s.next(w, r, f)
 }
 
-// next sends a code when the flow offers one, else finishes. The shop's
-// only second factor is the emailed code; an app with authenticator apps
-// would offer the others in f.Offers here.
+// next asks for a second proof when the flow offers one, else finishes: a
+// passkey when the user holds one, else the emailed code.
 func (s *Shop) next(w http.ResponseWriter, r *http.Request, f auth.Flow) {
+	if !f.Verified && contains(f.Offers, auth.MethodPasskey) {
+		s.askPasskey(w, r, f)
+		return
+	}
 	if !f.Verified && contains(f.Offers, auth.MethodEmailCode) {
 		ch, err := s.Auth.Challenge(r.Context(), f.Token, auth.MethodEmailCode)
 		if err != nil {
@@ -240,6 +270,10 @@ func (s *Shop) stepUp(w http.ResponseWriter, r *http.Request) {
 		fail(w, r, err)
 		return
 	}
+	if contains(f.Offers, auth.MethodPasskey) {
+		s.askPasskey(w, r, f)
+		return
+	}
 	if contains(f.Offers, auth.MethodEmailCode) {
 		ch, err := s.Auth.Challenge(ctx, f.Token, auth.MethodEmailCode)
 		if err != nil {
@@ -255,6 +289,99 @@ func (s *Shop) stepUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.finish(w, r, f)
+}
+
+// askPasskey answers with a passkey's options for the flow, which the flow
+// cookie carries; the page passes them to navigator.credentials.get and
+// posts the answer to /passkey/prove.
+func (s *Shop) askPasskey(w http.ResponseWriter, r *http.Request, f auth.Flow) {
+	ch, err := s.Auth.Challenge(r.Context(), f.Token, auth.MethodPasskey)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	f.Write(w)
+	reply(w, map[string]any{"next": "passkey", "options": ch.Options})
+}
+
+// passkeyOptions starts a sign-in that names no login, as the sign-in page
+// loads, so the browser can offer the user's passkeys in autofill.
+func (s *Shop) passkeyOptions(w http.ResponseWriter, r *http.Request) {
+	f, err := s.Auth.SignInWithout(r.Context(), auth.Cookie())
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	s.askPasskey(w, r, f)
+}
+
+// passkeyProve takes the browser's answer, the JSON of the credential, for
+// the flow in the flow cookie: a sign-in, its second proof, or a step-up.
+func (s *Shop) passkeyProve(w http.ResponseWriter, r *http.Request) {
+	token, ok := auth.FlowToken(r.Context())
+	if !ok {
+		fail(w, r, auth.ErrFlowExpired)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10+1))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	f, err := s.Auth.Prove(r.Context(), token, passkey.Response(body))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	s.finish(w, r, f)
+}
+
+// passkeyEnroll starts adding a passkey to the session's user, and answers
+// with the options for navigator.credentials.create.
+func (s *Shop) passkeyEnroll(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	sess, _ := auth.From(ctx)
+	f, err := s.Auth.Enroll(ctx, sess, auth.MethodPasskey)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	ch, err := s.Auth.Challenge(ctx, f.Token, auth.MethodPasskey)
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	f.Write(w)
+	reply(w, map[string]any{"options": ch.Options})
+}
+
+// passkeyEnrolled takes the browser's new credential and stores it, under
+// the label the page names (?label=); the first factor brings recovery
+// codes, shown once.
+func (s *Shop) passkeyEnrolled(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	token, ok := auth.FlowToken(ctx)
+	if !ok {
+		fail(w, r, auth.ErrFlowExpired)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 64<<10+1))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	f, err := s.Auth.Prove(ctx, token, passkey.Response(body))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	res, err := s.Auth.Finish(ctx, f.Token, auth.FactorLabel(r.URL.Query().Get("label")))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	res.Write(w)
+	reply(w, map[string]any{"recovery_codes": res.RecoveryCodes})
 }
 
 func (s *Shop) signOut(w http.ResponseWriter, r *http.Request) {

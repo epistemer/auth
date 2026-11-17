@@ -143,3 +143,48 @@ of `go doc -all` against §4's declarations, then each field list and the
    dropped and the require pinned (ADR 0004).
 
 The API is §4's. Findings 1 and 2 changed code; the rest need nothing.
+
+# API review for v0.2.0 (M7.3)
+
+Every identifier added since v0.1.0, as `go doc -all` lists them on
+2026-11-17, against what epistemer locked on 2026-11-17 (interface §4.3,
+§4.9, §4.11, amendment A21). The method was the same: a mechanical diff
+of the declarations, then each by hand. Nothing else exported changed.
+
+## `auth` (§4.2, §4.3, §4.9)
+
+| Identifier | Interface | Checked |
+|---|---|---|
+| `WithMethods` | accepted; refuses a nil method, two of a name, a built-in name, a name outside `[a-z0-9_]{1,32}` (A19 withdrawn) | `TestNewMethods` |
+| `MethodPasskey` | D27; a passkey is an enrolled factor (§5.13.12) | `TestModuleEnroll`; `passkey` `TestPasskey` |
+| `SignInWithout` | D32; offers `WithFirst`'s module methods, else `ErrMethodUnavailable` | `TestSignInWithout`, `TestSignInWithoutThrottle`, `TestSignInWithoutDeviceCounters` |
+| `FactorLabel` | D33; cut at 64, control characters dropped; authenticator apps too | `TestModuleEnroll`, `TestFactorLabelTOTP`, `TestModuleOwnLabelCleaned` |
+| `Refuse` | D34; wraps `ErrBadCredentials`, a fixed text, the reason only in the event | `TestRefuse` |
+| `MethodInput.Now` | D36; the engine's clock | `TestSignInWithout`; `passkey` `TestExpiresByTheEnginesClock` |
+
+## `authschema` (§4.11, D29)
+
+| Identifier | Interface | Checked |
+|---|---|---|
+| `Group(members ...dsl.Member)` | variadic: every existing call compiles | the test app; `examples/shop` |
+| `Passkey()` | the group `passkey`: `domain` (required) and `origins` | test app `TestPasskeyKeys`, `TestRanges`; `examples/shop` `settings_test.go` (`passkey.Config`) |
+
+## `auth/passkey` (§4.11, D28, D30, D31)
+
+| Identifier | Interface | Checked |
+|---|---|---|
+| `Config` | `AuthIssuer`, `AuthPasskeyDomain`, `AuthPasskeyOrigins` | `examples/shop` `settings_test.go` |
+| `New` | refuses each bad config of §4.11; returns an `auth.Method` | `TestNew`, `TestNewStricter`, `TestOrigins` |
+| `Response` | the JSON of `PublicKeyCredential.toJSON()`; prints no bytes | `TestNoLibraryText`, every sign-in test |
+| `Challenge.Options` | a `json.RawMessage`, unwrapped | `TestCreationOptions`, `TestRequestOptions` |
+
+## `auth/passkey/passkeytest` (§4.11, D35)
+
+| Identifier | Interface | Checked |
+|---|---|---|
+| `Authenticator`, `New`, `Create`, `Get` | one ES256 passkey; a second `Create` fails the test | `passkey` `TestPasskey`, `TestTwentyPasskeys`; `examples/shop` `TestPasskey` |
+
+## Findings
+
+None. The declarations are §4.11's and §4.3's, word for word; the
+passkey module's types from go-webauthn appear nowhere in its API.

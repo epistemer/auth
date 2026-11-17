@@ -46,6 +46,8 @@ type values struct {
 	AuthThrottleCeiling       time.Duration
 	AuthThrottleWindow        time.Duration
 	AuthCookieInsecure        bool
+	AuthPasskeyDomain         string
+	AuthPasskeyOrigins        []string
 	ServerAddr                string
 	ServerStore               string
 }
@@ -458,6 +460,20 @@ var keys = [...]engine.Key[values]{
 		Show:  func(v *values) any { return v.AuthCookieInsecure },
 	},
 	{
+		Path: "auth.passkey.domain", Env: "SHOP_AUTH_PASSKEY_DOMAIN", Flag: "auth-passkey-domain",
+		Type: "string", Desc: "Domain passkeys are bound to: the site's, without scheme or port", Quote: true, Required: true,
+		Set:   func(v *values, raw string) error { return engine.ParseString(raw, &v.AuthPasskeyDomain) },
+		IsSet: func(v *values) bool { return v.AuthPasskeyDomain != "" },
+		Show:  func(v *values) any { return v.AuthPasskeyDomain },
+	},
+	{
+		Path: "auth.passkey.origins", Env: "SHOP_AUTH_PASSKEY_ORIGINS", Flag: "auth-passkey-origins",
+		Type: "strings", Desc: "Origins passkeys may be used from; https://<domain> when empty",
+		SetItems: func(v *values, items []string) error { return engine.ParseStrings(items, &v.AuthPasskeyOrigins) },
+		IsSet:    func(v *values) bool { return len(v.AuthPasskeyOrigins) != 0 },
+		Show:     func(v *values) any { return v.AuthPasskeyOrigins },
+	},
+	{
 		Path: "server.addr", Env: "SHOP_SERVER_ADDR", Flag: "server-addr",
 		Type: "string", Desc: "Listen address", DefaultText: "localhost:8080", Quote: true,
 		Set:     func(v *values, raw string) error { return engine.ParseString(raw, &v.ServerAddr) },
@@ -504,6 +520,7 @@ type Auth interface {
 	AuthPassword
 	AuthThrottle
 	AuthCookie
+	AuthPasskey
 }
 
 type authGroup struct {
@@ -520,6 +537,7 @@ type authGroup struct {
 	*authPasswordGroup
 	*authThrottleGroup
 	*authCookieGroup
+	*authPasskeyGroup
 }
 
 // AuthIssuer returns auth.issuer: Issuer: the name in tokens and authenticator apps
@@ -718,6 +736,20 @@ type authCookieGroup struct{ r *root }
 // AuthCookieInsecure returns auth.cookie.insecure: Drop Secure and the __Host- prefix, for development over plain HTTP
 func (g *authCookieGroup) AuthCookieInsecure() bool { return g.r.cur.Load().AuthCookieInsecure }
 
+// AuthPasskey is the auth.passkey group: Passkeys
+type AuthPasskey interface {
+	AuthPasskeyDomain() string
+	AuthPasskeyOrigins() []string
+}
+
+type authPasskeyGroup struct{ r *root }
+
+// AuthPasskeyDomain returns auth.passkey.domain: Domain passkeys are bound to: the site's, without scheme or port
+func (g *authPasskeyGroup) AuthPasskeyDomain() string { return g.r.cur.Load().AuthPasskeyDomain }
+
+// AuthPasskeyOrigins returns auth.passkey.origins: Origins passkeys may be used from; https://<domain> when empty
+func (g *authPasskeyGroup) AuthPasskeyOrigins() []string { return g.r.cur.Load().AuthPasskeyOrigins }
+
 // Server is the server group: Web server
 type Server interface {
 	ServerAddr() string
@@ -757,6 +789,7 @@ type AuthValues struct {
 	Password       AuthPasswordValues
 	Throttle       AuthThrottleValues
 	Cookie         AuthCookieValues
+	Passkey        AuthPasskeyValues
 }
 
 // AuthSessionValues holds the auth.session settings, for Test.
@@ -831,6 +864,12 @@ type AuthCookieValues struct {
 	Insecure bool
 }
 
+// AuthPasskeyValues holds the auth.passkey settings, for Test.
+type AuthPasskeyValues struct {
+	Domain  string
+	Origins []string
+}
+
 // ServerValues holds the server settings, for Test.
 type ServerValues struct {
 	Addr  string
@@ -867,6 +906,8 @@ func (tv *Values) load(v *values) {
 	tv.Auth.Throttle.Ceiling = v.AuthThrottleCeiling
 	tv.Auth.Throttle.Window = v.AuthThrottleWindow
 	tv.Auth.Cookie.Insecure = v.AuthCookieInsecure
+	tv.Auth.Passkey.Domain = v.AuthPasskeyDomain
+	tv.Auth.Passkey.Origins = v.AuthPasskeyOrigins
 	tv.Server.Addr = v.ServerAddr
 	tv.Server.Store = v.ServerStore
 }
@@ -901,6 +942,8 @@ func (tv *Values) store(v *values) {
 	v.AuthThrottleCeiling = tv.Auth.Throttle.Ceiling
 	v.AuthThrottleWindow = tv.Auth.Throttle.Window
 	v.AuthCookieInsecure = tv.Auth.Cookie.Insecure
+	v.AuthPasskeyDomain = tv.Auth.Passkey.Domain
+	v.AuthPasskeyOrigins = tv.Auth.Passkey.Origins
 	v.ServerAddr = tv.Server.Addr
 	v.ServerStore = tv.Server.Store
 }
@@ -926,7 +969,7 @@ func Test(edit func(v *Values)) *All {
 	tv.store(v)
 	r := &root{cur: engine.NewSnapshot(v)}
 	return &All{
-		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}},
+		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}, authPasskeyGroup: &authPasskeyGroup{r: r}},
 		serverGroup: &serverGroup{r: r},
 	}
 }
@@ -951,12 +994,12 @@ type Serve struct {
 // them. The slice is a copy.
 func (c *Serve) Args() []string { return slices.Clone(c.args) }
 
-var keysServe = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29}
+var keysServe = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}
 
 func newServe(s *engine.Snapshot[values], w *engine.Writer[values], args []string) *Serve {
 	r := &root{cur: s}
 	return &Serve{
-		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}},
+		authGroup:   &authGroup{r: r, authSessionGroup: &authSessionGroup{r: r}, authAccessGroup: &authAccessGroup{r: r}, authRefreshGroup: &authRefreshGroup{r: r}, authFlowGroup: &authFlowGroup{r: r}, authFreshGroup: &authFreshGroup{r: r}, authCodeGroup: &authCodeGroup{r: r}, authLinkGroup: &authLinkGroup{r: r}, authInvitationGroup: &authInvitationGroup{r: r}, authDeviceGroup: &authDeviceGroup{r: r}, authPasswordGroup: &authPasswordGroup{r: r}, authThrottleGroup: &authThrottleGroup{r: r}, authCookieGroup: &authCookieGroup{r: r}, authPasskeyGroup: &authPasskeyGroup{r: r}},
 		serverGroup: &serverGroup{r: r},
 		args:        slices.Clone(args),
 	}

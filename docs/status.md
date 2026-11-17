@@ -3,6 +3,25 @@
 Newest first. Every working session adds an entry: what landed, the decisions
 taken for you, what's next, and what's waiting on you.
 
+## 2026-11-17: passkeys in the schema and the shop (M7.3)
+
+- **Landed:** `authschema.Group` takes nested groups, and
+  `authschema.Passkey()` declares `auth.passkey.domain` (required) and
+  `.origins`; the test app checks the generated settings meet
+  `passkey.Config`'s getters. The shop declares passkeys, builds the
+  method, offers it as a first proof, and has routes to sign in by
+  passkey alone, to answer a passkey as the second proof or a step-up,
+  and to add one. Its end-to-end test enrolls a passkey through
+  `passkeytest`, signs in by passkey alone (verified, and approves a
+  payout), signs in by password and is asked for the passkey, steps up
+  by passkey, and refuses a stranger's.
+- **Docs:** README (passkeys, what's not in v0.2), CHANGELOG,
+  `docs/api-review.md` for every identifier added since v0.1.0: they are
+  §4.11's and §4.3's word for word.
+- **Decided for you:** nothing.
+- **Next:** M7.4, the security review of M7.1–M7.3 at the highest effort.
+- **Waiting on you:** nothing.
+
 ## 2026-11-17: the passkey module (M7.2)
 
 - **Landed:** `auth/passkey`, a nested module on go-webauthn v0.18.2
